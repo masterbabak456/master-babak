@@ -147,13 +147,13 @@ def getlink():
     <h2>🎁 Şəxsi Linkiniz</h2>
 
     <input
-    value="http://127.0.0.1:5000/?ref={mycode}"
+    value="https://master-babak.onrender.com/?ref={mycode}"
     style="width:100%;padding:10px;font-size:16px;"
     readonly>
 
     <br><br>
 
-    <a href="https://wa.me/?text=🥋 TKD Kampaniyası%0A%0Ahttp://127.0.0.1:5000/?ref={mycode}">
+    <a href="https://wa.me/?text=🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={mycode}">
     <button style="
     padding:15px;
     font-size:20px;
