@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect
+from flask import Flask, request, redirect, make_response
 import uuid
 from flask_sqlalchemy import SQLAlchemy
 
@@ -49,7 +49,7 @@ def home():
     <img src="/static/logo.png" width="220">
 
     <h1>Cənub Azərbaycan</h1>
-    
+
     <h2>TKD / Kickboxing / MMA</h2>
 
     <h3>
@@ -125,8 +125,13 @@ def getlink():
 
     parent = request.args.get("parent","ROOT")
     name = request.args.get("name","Unknown")
+    saved_code = request.cookies.get("mycode")
 
-    existing = User.query.filter_by(name=name).first()
+    if saved_code:
+        existing = User.query.filter_by(code=saved_code).first()
+    else:
+        existing = None
+        existing = User.query.filter_by(name=name).first()
     print("NAME =", name)
     print("EXISTING =", existing)
 
@@ -170,8 +175,8 @@ def getlink():
     if progress > 100:
         progress = 100
 
-     
-    return f"""
+    response = make_response(f"""
+   
     <html>
 
     <body style="font-family:Arial;max-width:700px;margin:auto;">
@@ -253,7 +258,15 @@ def getlink():
 
     </body>
     </html>
-    """
+    """)
+    response.set_cookie(
+        "mycode",
+        mycode,
+        max_age=60*60*24*365
+    )
+    
+    return response
+
 @app.route("/stats/<code>")
 def stats(code):
 
