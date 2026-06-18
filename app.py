@@ -12,20 +12,43 @@ class User(db.Model):
     code = db.Column(db.String(20), unique=True)
     name = db.Column(db.String(100))
     parent = db.Column(db.String(20))
-
+class Visit(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(20))
+    visitor = db.Column(db.String(200))
 with app.app_context():
     db.create_all()
 @app.route("/")
 def home():
 
     ref = request.args.get("ref", "ROOT")
+    if ref != "ROOT":
 
+        visitor = request.headers.get("User-Agent")
+
+        old_visit = Visit.query.filter_by(
+            code=ref,
+            visitor=visitor
+        ).first()
+
+        if not old_visit:
+
+            visit = Visit(
+                code=ref,
+                visitor=visitor
+            )
+
+            db.session.add(visit)
+            db.session.commit()
+
+            print("NEW VIEW:", ref)  
+    
     return f"""
     <center>
 
     <img src="/static/logo.png" width="220">
 
-    <h1>Cənub Azərbaycan</h1>
+    <h1>Cənub Azərbaycan TEST123</h1>
 
     <h2>TKD / Kickboxing / MMA</h2>
 
@@ -75,7 +98,7 @@ def home():
     <input name="name"
     placeholder="Adınızı yazın"
     style="
-    width:90%;
+    width:60%;
     font-size:20px;
     padding:12px;
     border-radius:8px;
@@ -103,16 +126,27 @@ def getlink():
     parent = request.args.get("parent","ROOT")
     name = request.args.get("name","Unknown")
 
-    mycode = str(uuid.uuid4())[:8]
-    new_user = User(
-        code=mycode,
-        name=name,
-        parent=parent
-    )
+    existing = User.query.filter_by(name=name).first()
+    print("NAME =", name)
+    print("EXISTING =", existing)
 
-    db.session.add(new_user)
-    db.session.commit()
-    count = User.query.filter_by(parent=mycode).count()
+    if existing:
+        mycode = existing.code
+
+    else:
+        mycode = str(uuid.uuid4())[:8]
+
+        new_user = User(
+            code=mycode,
+            name=name,
+            parent=parent
+        )
+
+
+        db.session.add(new_user)
+        db.session.commit()
+        print("USER SAVED:", name, mycode, parent)
+    count = Visit.query.filter_by(code=mycode).count()
 
     if count >= 50:
         discount = "50%"
@@ -229,7 +263,9 @@ def stats(code):
         return "User not found"
 
     count = User.query.filter_by(parent=code).count()
-
+    views = Visit.query.filter_by(code=code).count()
+    count = views
+    print("VIEWS =", views)
     if count >= 50:
         discount = "50%"
         next_level = 50
@@ -271,6 +307,8 @@ def stats(code):
 
     <h2>Dəvət sayı: {count}</h2>
 
+    <h2>👀 Baxış sayı: {views}</h2>
+
     <h2>Endirim: {discount}</h2>
 
     <div style="
@@ -300,7 +338,7 @@ def stats(code):
     '''
 @app.route("/admin")
 def admin():
-
+    print("ADMIN OPENED")
     users = User.query.all()
 
     total_users = len(users)
