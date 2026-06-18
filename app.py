@@ -67,10 +67,11 @@ def home():
 
     <video
     controls
+    playsinline
     style="
     width:95%;
-    height:180px;
-    object-fit:cover;
+    height:220px;
+    object-fit:contain;
     border-radius:10px;
     ">
     <source src="/static/videomaster.mp4" type="video/mp4">
