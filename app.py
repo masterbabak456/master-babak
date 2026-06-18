@@ -61,8 +61,22 @@ def home():
     <hr>
     <center>
 
-    <video width="90%" controls>
-        <source src="/static/videomaster.mp4" type="video/mp4">
+    <video
+    controls
+    style="
+    width:95%;
+    height:120px;
+    object-fit:cover;
+    border-radius:10px;
+    ">
+    <source src="/static/videomaster.mp4" type="video/mp4">
+    </video>
+    <hr>
+
+    <h3>Adınızı yazın</h3>
+    </center>
+    <hr>
+    <source src="/static/videomaster.mp4" type="video/mp4">
     </video>
 
     </center>
@@ -179,7 +193,13 @@ def getlink():
    
     <html>
 
-    <body style="font-family:Arial;max-width:700px;margin:auto;">
+    <body style="
+    font-family:Arial;
+    max-width:100%;
+    margin:auto;
+    padding:20px;
+    font-size:24px;
+    ">
 
     <h1>👤 {name}</h1>
 
@@ -187,17 +207,17 @@ def getlink():
 
     <input
     value="https://master-babak.onrender.com/?ref={mycode}"
-    style="width:100%;padding:10px;font-size:16px;"
+    style="width:100%;padding:10px;font-size:24px;"
     readonly>
 
     <br><br>
 
     <a href="https://wa.me/?text=🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={mycode}">
     <button style="
-    padding:15px;
-    font-size:20px;
+    padding:25px;
+    font-size:28px;
     background:green;
-    color:white;
+    color:white:100%;
     border:none;
     cursor:pointer;
     ">
@@ -242,19 +262,6 @@ def getlink():
 
     <br><br>
     <br><br>
-
-    <a href="/stats/{mycode}">
-    <button style="
-    padding:15px;
-    font-size:20px;
-    background:orange;
-    color:white;
-    border:none;
-    border-radius:10px;
-    ">
-    📊 Dəvətlərimə bax
-    </button>
-    </a>
 
     </body>
     </html>
