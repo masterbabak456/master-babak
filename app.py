@@ -201,19 +201,27 @@ def getlink():
 
     <input
     value="https://master-babak.onrender.com/?ref={mycode}"
-    style="width:100%;padding:10px;font-size:24px;"
+    style="
+    width:95%;
+    padding:25px;
+    font-size:28px;
+    border-radius:12px;
+    margin:10px 0;
+    "
     readonly>
 
     <br><br>
 
     <a href="https://wa.me/?text=🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={mycode}">
     <button style="
+    width:95%;
     padding:25px;
     font-size:28px;
     background:green;
-    color:white:100%;
+    color:white;
     border:none;
     cursor:pointer;
+    border-radius:12px;
     ">
     📲 WhatsApp-da Paylaş
     </button>
@@ -226,19 +234,19 @@ def getlink():
 
     <hr>
 
-    <h2>Dəvət sayı: {count}</h2>
+    <h1>Dəvət sayı: {count}</h1>
 
-    <h2>Endirim: {discount}</h2>
+    <h1>Endirim: {discount}</h1>
 
     <div style="
     width:100%;
-    height:30px;
+    height:45px;
     border:1px solid black;
     ">
 
     <div style="
     width:{progress}%;
-    height:30px;
+    height:45px;
     background:green;
     ">
     </div>
