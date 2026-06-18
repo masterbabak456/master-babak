@@ -52,8 +52,12 @@ def home():
 
     <h2>TKD / Kickboxing / MMA</h2>
 
-    <h3>
-    Master Babak Vosoghi, 8-ci Dan, Novxanı, 0513909912
+    <h3 style="font-size:22px;">
+    Master Babak Vosoghi
+    <br>
+    8-ci Dan, Novxanı
+    <br>
+    0513909912
     </h3>
 
     </center>
@@ -65,25 +69,15 @@ def home():
     controls
     style="
     width:95%;
-    height:120px;
+    height:180px;
     object-fit:cover;
     border-radius:10px;
     ">
     <source src="/static/videomaster.mp4" type="video/mp4">
     </video>
-    <hr>
-
-    <h3>Adınızı yazın</h3>
-    </center>
-    <hr>
-    <source src="/static/videomaster.mp4" type="video/mp4">
-    </video>
-
+   
     </center>
 
-    <br>
-
-    <br>
     <h3>🎁 Endirim Kampaniyası</h3>
 
     <p>
@@ -112,8 +106,8 @@ def home():
     <input name="name"
     placeholder="Adınızı yazın"
     style="
-    width:60%;
-    font-size:20px;
+    width:95%;
+    font-size:30px;
     padding:12px;
     border-radius:8px;
     ">
