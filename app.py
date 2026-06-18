@@ -48,8 +48,8 @@ def home():
 
     <img src="/static/logo.png" width="220">
 
-    <h1>Cənub Azərbaycan TEST123</h1>
-
+    <h1>Cənub Azərbaycan</h1>
+    
     <h2>TKD / Kickboxing / MMA</h2>
 
     <h3>
