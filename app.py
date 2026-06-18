@@ -102,24 +102,24 @@ def home():
 
     <input type="hidden" name="parent" value="{ref}">
 
-    <h3>Adınızı yazın:</h3>
     <input name="name"
     placeholder="Adınızı yazın"
     style="
     width:95%;
     font-size:30px;
-    padding:12px;
-    border-radius:8px;
+    padding:30px;
+    border-radius:12px;
     ">
     <br><br>
 
     <button style="
-    font-size:28px;
-    padding:18px;
+    width:95%;
+    font-size:30px;
+    padding:28px;
     background:#28a745;
     color:white;
     border:none;
-    border-radius:10px;
+    border-radius:12px;
     ">
     🎁 Şəxsi Linkimi Al
     </button>
@@ -203,7 +203,7 @@ def getlink():
     value="https://master-babak.onrender.com/?ref={mycode}"
     style="
     width:95%;
-    padding:25px;
+    padding:35px;
     font-size:28px;
     border-radius:12px;
     margin:10px 0;
@@ -215,8 +215,8 @@ def getlink():
     <a href="https://wa.me/?text=🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={mycode}">
     <button style="
     width:95%;
-    padding:25px;
-    font-size:28px;
+    padding:35px;
+    font-size:32px;
     background:green;
     color:white;
     border:none;
