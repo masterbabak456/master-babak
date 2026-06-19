@@ -382,17 +382,22 @@ def admin():
     style="border-collapse:collapse;width:100%;background:white;color:black;">
 
     <tr>
-      <th>Name</th>
-      <th>Code</th>
-      <th>Parent</th>
-      <th>Referrals</th>
-      <th>Discount</th>  
+        <th>Name</th>
+        <th>Code</th>
+        <th>Link</th>
+        <th>Parent</th>
+        <th>Stats</th>
+        <th>Discount</th>
     </tr>
     """
 
     for user in users:
 
         count = User.query.filter_by(parent=user.code).count()
+
+        views = Visit.query.filter_by(code=user.code).count()
+
+        children = User.query.filter_by(parent=user.code).all()
 
         if count >= 50:
             discount = "50%"
@@ -426,15 +431,37 @@ def admin():
         if progress > 100:
             progress = 100
 
+        child_names = ""
+
+        for child in children:
+            child_names += child.name + "<br>"
+
         html += f"""
         <tr>
             <td>{user.name}</td>
             <td>{user.code}</td>
-            <td>{user.parent}</td>
-            <td>{count}</td>
+
             <td>
-{discount}
-<br><br>
+            <a target="_blank"
+            href="https://master-babak.onrender.com/?ref={user.code}">
+            Open Link
+            </a>
+            </td>
+
+            <td>{user.parent}</td>
+            <td>
+            Referrals: {count}
+            <br>
+            Views: {views}
+
+            <br><br>
+
+            {child_names}
+            </td>
+
+            <td>
+            {discount}
+            <br><br>
 
 <div style="width:200px;border:1px solid black;">
 <div style="
