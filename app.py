@@ -134,13 +134,7 @@ def getlink():
 
     parent = request.args.get("parent","ROOT")
     name = request.args.get("name","Unknown")
-    saved_code = request.cookies.get("mycode")
-
-    if saved_code:
-        existing = User.query.filter_by(code=saved_code).first()
-    else:
-        existing = None
-        existing = User.query.filter_by(name=name).first()
+    existing = User.query.filter_by(name=name).first()
     print("NAME =", name)
     print("EXISTING =", existing)
 
@@ -379,7 +373,7 @@ def admin():
     <h2>Total Members: {total_users}</h2>
     <hr>
 
-    <h2>👨‍🏫 Yeni Məşqçi</h2>
+    
 
     <form action="/coachsend">
 
@@ -413,10 +407,9 @@ def admin():
         <th>Name</th>
         <th>Code</th>
         <th>Panel</th>
-        <th>Link</th>
+        
         <th>Parent</th>
-        <th>Stats</th>
-        <th>Discount</th>
+       
     </tr>
     """
 
@@ -467,7 +460,12 @@ def admin():
 
         html += f"""
         <tr>
-            <td>{user.name}</td>
+            <td>
+            <a target="_blank"
+            href="/coach/{user.code}">
+            {user.name}
+            </a>
+            </td> 
             <td>{user.code}</td>
 
             <td>{user.name}</td>
@@ -480,39 +478,10 @@ def admin():
             </a>
             </td>
 
-            <td>
-            <a target="_blank"
-            href="https://master-babak.onrender.com/?ref={user.code}">
-            Open Link
-            </a>
-            </td>
 
             <td>{user.parent}</td>
-            <td>
-            Referrals: {count}
-            <br>
-            Views: {views}
+           
 
-            <br><br>
-
-            {child_names}
-            </td>
-
-            <td>
-            {discount}
-            <br><br>
-
-<div style="width:200px;border:1px solid black;">
-<div style="
-width:{progress}%;
-height:20px;
-background:green;">
-</div>
-</div>
-
-Qalan:
-{remaining}
-</td>
         </tr>
         """
 
@@ -577,7 +546,24 @@ def coach(code):
     margin:auto;
     padding:20px;
     ">
+    <a href="javascript:history.back()">
 
+    <button style="
+    width:95%;
+    padding:15px;
+    font-size:22px;
+    background:#007bff;
+    color:white;
+    border:none;
+    border-radius:10px;
+    margin-bottom:20px;
+    ">
+
+    ⬅️ Geri
+
+    </button>
+
+    </a>
     <h1>👨‍🏫 {user.name}</h1>
 
     <h2>🎁 Endirim: {discount}</h2>
