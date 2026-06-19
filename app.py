@@ -406,10 +406,9 @@ def admin():
     <tr>
         <th>Name</th>
         <th>Code</th>
-        <th>Panel</th>
-        
-        <th>Parent</th>
-       
+        <th>Məşqçi</th>
+        <th>Stats</th>
+        <th>Discount</th>
     </tr>
     """
 
@@ -460,26 +459,51 @@ def admin():
 
         html += f"""
         <tr>
-            <td>
-            <a target="_blank"
-            href="/coach/{user.code}">
-            {user.name}
-            </a>
-            </td> 
-            <td>{user.code}</td>
+        </td>
+        <td>
+        <a target="_blank"
+        href="/coach/{user.code}">
+        {user.name}
+        </a>
+        </td>
 
-            <td>{user.name}</td>
-            <td>{user.code}</td>
+        <td>
+        {user.code}
+        </td>
+        
+        <td>
+        <a target="_blank"
+        href="/coach/{user.code}">
+        👨‍🏫 Məşqçi
+        </a>
+        </td>
+        <td>
+        Referrals: {count}
+        <br>
+        Views: {views}
 
-            <td>
-            <a target="_blank"
-            href="/coach/{user.code}">
-            👨‍🏫 Məşqçi
-            </a>
-            </td>
+        <br><br>
 
+        {child_names}
+        </td>
 
-            <td>{user.parent}</td>
+        <td>
+        {discount}
+        <br><br>
+
+        <div style="width:200px;border:1px solid black;">
+        <div style="
+        width:{progress}%;
+        height:20px;
+        background:green;">
+        </div>
+        </div>
+
+        Qalan:
+        {remaining}
+        </td>
+
+                    
            
 
         </tr>
