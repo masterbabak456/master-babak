@@ -527,113 +527,11 @@ def admin():
 
     """
     return html
+
 @app.route("/coach/<code>")
 def coach(code):
+    return redirect(f"/?ref={code}")
 
-    user = User.query.filter_by(code=code).first()
-
-    if not user:
-        return "Coach not found"
-
-    views = Visit.query.filter_by(code=code).count()
-
-    children = User.query.filter_by(parent=code).all()
-
-    count = len(children)
-
-    if count >= 50:
-        discount = "50%"
-    elif count >= 40:
-        discount = "40%"
-    elif count >= 30:
-        discount = "30%"
-    elif count >= 20:
-        discount = "20%"
-    elif count >= 10:
-        discount = "10%"
-    else:
-        discount = "0%"
-
-    child_names = ""
-
-    for child in children:
-        child_names += f"👤 {child.name}<br>"
-
-    return f"""
-    <html>
-
-    <body style="
-    font-family:Arial;
-    background:#111;
-    color:white;
-    max-width:700px;
-    margin:auto;
-    padding:20px;
-    ">
-    <a href="javascript:history.back()">
-
-    <button style="
-    width:95%;
-    padding:15px;
-    font-size:22px;
-    background:#007bff;
-    color:white;
-    border:none;
-    border-radius:10px;
-    margin-bottom:20px;
-    ">
-
-    ⬅️ Geri
-
-    </button>
-
-    </a>
-    <h1>👨‍🏫 {user.name}</h1>
-
-    <h2>🎁 Endirim: {discount}</h2>
-
-    <h2>👀 Baxış sayı: {views}</h2>
-
-    <h2>👥 Şagird sayı: {count}</h2>
-
-    <hr>
-
-    <h3>🔗 Şəxsi Link</h3>
-
-    <input
-    value="https://master-babak.onrender.com/?ref={user.code}"
-    style="
-    width:95%;
-    padding:15px;
-    font-size:18px;
-    "
-    readonly>
-
-    <br><br>
-
-    <a href="https://wa.me/?text=https://master-babak.onrender.com/?ref={user.code}">
-    <button style="
-    width:95%;
-    padding:20px;
-    font-size:24px;
-    background:green;
-    color:white;
-    border:none;
-    border-radius:10px;
-    ">
-    📲 WhatsApp-da Paylaş
-    </button>
-    </a>
-
-    <hr>
-
-    <h2>👥 Şagirdlər</h2>
-
-    {child_names}
-
-    </body>
-    </html>
-    """
 @app.route("/coachsend")
 def coachsend():
 
