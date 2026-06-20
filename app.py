@@ -404,11 +404,12 @@ def admin():
     style="border-collapse:collapse;width:100%;background:white;color:black;">
 
     <tr>
-        <th>Name</th>
-        <th>Code</th>
-        <th>Məşqçi</th>
-        <th>Stats</th>
-        <th>Discount</th>
+    <td> Name </td>
+    <td> Code </td>
+    <td> Coach </td>
+    <td> Stats </td>
+    <td> Discount + Progress Bar </td>
+    <td> Delete Button </td>
     </tr>
     """
 
@@ -459,7 +460,6 @@ def admin():
 
         html += f"""
         <tr>
-        </td>
         <td>
         <a target="_blank"
         href="/coach/{user.code}">
@@ -487,7 +487,7 @@ def admin():
         {child_names}
         </td>
 
-        <td>
+       <td>
         {discount}
         <br><br>
 
@@ -503,8 +503,18 @@ def admin():
         {remaining}
         </td>
 
-                    
-           
+        <td>
+        <a href="/deletecoach/{user.code}"
+        style="
+        background:red;
+        color:white;
+        padding:8px;
+        text-decoration:none;
+        border-radius:5px;
+        ">
+        🗑 Delete
+        </a>
+        </td> 
 
         </tr>
         """
@@ -554,5 +564,24 @@ def coachsend():
     return redirect(
         f"https://wa.me/?text=Salam {coachname}%0A%0ABu sizin şəxsi məşqçi linkinizdir:%0A%0Ahttps://master-babak.onrender.com/?ref={code}"
     )
+@app.route("/deletecoach/<code>")
+def deletecoach(code):
+
+    user = User.query.filter_by(
+        code=code
+    ).first()
+
+    if not user:
+        return "User not found"
+
+    Visit.query.filter_by(
+        code=code
+    ).delete()
+
+    db.session.delete(user)
+
+    db.session.commit()
+
+    return redirect("/admin")
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
