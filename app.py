@@ -22,6 +22,35 @@ with app.app_context():
 def home():
 
     ref = request.args.get("ref", "ROOT")
+    user = User.query.filter_by(code=ref).first()
+
+    if user:
+        count = Visit.query.filter_by(code=ref).count()
+
+        return f"""
+        <h1>👤 {user.name}</h1>
+
+        <h2>🎁 Şəxsi Linkiniz</h2>
+
+        <input
+        value="https://master-babak.onrender.com/?ref={user.code}"
+        style="
+        width:95%;
+        padding:30px;
+        font-size:25px;
+        "
+        readonly>
+
+        <br><br>
+
+        <a href="https://wa.me/?text=https://master-babak.onrender.com/?ref={user.code}">
+        <button>
+        📲 WhatsApp-da Paylaş
+        </button>
+        </a>
+
+        <h2>Dəvət sayı: {count}</h2>
+        """
     if ref != "ROOT":
 
         visitor = request.headers.get("User-Agent")
@@ -357,7 +386,10 @@ def stats(code):
 def admin():
     print("ADMIN OPENED")
     users = User.query.all()
+    print("TOTAL USERS =", len(users))
 
+    for u in users:
+        print(u.name, u.code)
     total_users = len(users)
 
     html = f"""
