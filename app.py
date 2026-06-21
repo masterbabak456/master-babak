@@ -23,13 +23,7 @@ def home():
 
     ref = request.args.get("ref", "ROOT")
     user = User.query.filter_by(code=ref).first()
-    saved_code = request.cookies.get("mycode")
-    saved_user = None
-
-    if saved_code:
-        saved_user = User.query.filter_by(
-            code=saved_code
-        ).first()
+    
     
     if ref != "ROOT":
 
@@ -51,9 +45,7 @@ def home():
             db.session.commit()
 
             print("NEW VIEW:", ref) 
-            if saved_user and saved_user.code == ref:
-
-                return redirect(f"/stats/{saved_user.code}")
+            
     
             return f"""
             <center>
