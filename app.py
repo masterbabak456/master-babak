@@ -23,34 +23,8 @@ def home():
 
     ref = request.args.get("ref", "ROOT")
     user = User.query.filter_by(code=ref).first()
-
-    if user:
-        count = Visit.query.filter_by(code=ref).count()
-
-        return f"""
-        <h1>👤 {user.name}</h1>
-
-        <h2>🎁 Şəxsi Linkiniz</h2>
-
-        <input
-        value="https://master-babak.onrender.com/?ref={user.code}"
-        style="
-        width:95%;
-        padding:30px;
-        font-size:25px;
-        "
-        readonly>
-
-        <br><br>
-
-        <a href="https://wa.me/?text=https://master-babak.onrender.com/?ref={user.code}">
-        <button>
-        📲 WhatsApp-da Paylaş
-        </button>
-        </a>
-
-        <h2>Dəvət sayı: {count}</h2>
-        """
+    saved_code = request.cookies.get("mycode")
+    
     if ref != "ROOT":
 
         visitor = request.headers.get("User-Agent")
@@ -127,7 +101,7 @@ def home():
     </p>
 
     <hr>
-
+    
     <form action="/getlink">
 
     <input type="hidden" name="parent" value="{ref}">
@@ -207,97 +181,16 @@ def getlink():
     if progress > 100:
         progress = 100
 
-    response = make_response(f"""
-   
-    <html>
+    response = make_response(
+        redirect(f"/?ref={mycode}")
+    )
 
-    <body style="
-    font-family:Arial;
-    max-width:100%;
-    margin:auto;
-    padding:20px;
-    font-size:24px;
-    ">
-
-    <h1>👤 {name}</h1>
-
-    <h2>🎁 Şəxsi Linkiniz</h2>
-
-    <input
-    value="https://master-babak.onrender.com/?ref={mycode}"
-    style="
-    width:95%;
-    padding:35px;
-    font-size:28px;
-    border-radius:12px;
-    margin:10px 0;
-    "
-    readonly>
-
-    <br><br>
-
-    <a href="https://wa.me/?text=🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={mycode}">
-    <button style="
-    width:95%;
-    padding:35px;
-    font-size:32px;
-    background:green;
-    color:white;
-    border:none;
-    cursor:pointer;
-    border-radius:12px;
-    ">
-    📲 WhatsApp-da Paylaş
-    </button>
-    </a>
-
-    <br><br>
-    <h3>📢 Linki dostlarınıza göndərin</h3>
-
-    <h3>⏰ Kampaniya müddəti: 1 ay</h3>
-
-    <hr>
-
-    <h1>Dəvət sayı: {count}</h1>
-
-    <h1>Endirim: {discount}</h1>
-
-    <div style="
-    width:100%;
-    height:45px;
-    border:1px solid black;
-    ">
-
-    <div style="
-    width:{progress}%;
-    height:45px;
-    background:green;
-    ">
-    </div>
-
-    </div>
-
-    <br>
-
-    <b>Qalan: {remaining} nəfər</b>
-    <br><br>
-
-    <b>
-    ⚠️ Kampaniya hər ay yenilənir.
-    </b>
-
-    <br><br>
-    <br><br>
-
-    </body>
-    </html>
-    """)
     response.set_cookie(
         "mycode",
         mycode,
         max_age=60*60*24*365
     )
-    
+
     return response
 
 @app.route("/stats/<code>")
