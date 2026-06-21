@@ -23,7 +23,8 @@ def home():
 
     ref = request.args.get("ref", "ROOT")
     user = User.query.filter_by(code=ref).first()
-    
+    if user:
+        return redirect(f"/stats/{user.code}")
     
     if ref != "ROOT":
         visitor = request.headers.get("User-Agent")
