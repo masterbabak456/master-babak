@@ -26,7 +26,6 @@ def home():
     
     
     if ref != "ROOT":
-
         visitor = request.headers.get("User-Agent")
 
         old_visit = Visit.query.filter_by(
@@ -103,7 +102,7 @@ def home():
 
     <hr>
 
-   
+    <form action="/getlink">
 
     <input type="hidden" name="parent" value="{ref}">
 
