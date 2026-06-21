@@ -24,6 +24,12 @@ def home():
     ref = request.args.get("ref", "ROOT")
     user = User.query.filter_by(code=ref).first()
     saved_code = request.cookies.get("mycode")
+    saved_user = None
+
+    if saved_code:
+        saved_user = User.query.filter_by(
+            code=saved_code
+        ).first()
     
     if ref != "ROOT":
 
@@ -44,10 +50,13 @@ def home():
             db.session.add(visit)
             db.session.commit()
 
-            print("NEW VIEW:", ref)  
+            print("NEW VIEW:", ref) 
+            if saved_user and saved_user.code == ref:
+
+                return redirect(f"/stats/{saved_user.code}")
     
-    return f"""
-    <center>
+            return f"""
+            <center>
 
     <img src="/static/logo.png" width="220">
 
@@ -101,8 +110,42 @@ def home():
     </p>
 
     <hr>
-    
+
+    {""
+
+    if user else f'''
+
     <form action="/getlink">
+
+    <input type="hidden" name="parent" value="{ref}">
+
+    <input name="name"
+    placeholder="Adınızı yazın"
+    style="
+    width:95%;
+    font-size:30px;
+    padding:30px;
+    border-radius:12px;
+    ">
+
+    <br><br>
+
+    <button style="
+    width:95%;
+    font-size:30px;
+    padding:28px;
+    background:#28a745;
+    color:white;
+    border:none;
+    border-radius:12px;
+    ">
+    🎁 Şəxsi Linkimi Al
+    </button>
+
+    </form>
+
+    '''
+    }
 
     <input type="hidden" name="parent" value="{ref}">
 
