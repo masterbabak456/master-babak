@@ -48,7 +48,7 @@ def home():
 
     <img src="/static/logo.png" width="220">
 
-    <h1>Cənub Azərbaycan TESy999</h1>
+    <h1>Cənub Azərbaycan </h1>
 
     <h2>TKD / Kickboxing / MMA</h2>
 
@@ -97,8 +97,7 @@ def home():
 
     <input type="hidden" name="parent" value="{ref}">
 
-    <input type="hidden" name="name" value="AUTO">
-
+    <input type="hidden" name="name" value=""> 
     <button style="
     font-size:28px;
     padding:18px;
