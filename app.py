@@ -48,19 +48,17 @@ def home():
     <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
-
+    <body style="font-family:Arial;font-size:14px;">
     <center>
 
     <img src="/static/logo.png" width="220">
 
-    <h1>Cənub Azərbaycan </h1>
+    <h1 style="font-size:32px;">Cənub Azərbaycan</h1>
 
-    <h2>TKD / Kickboxing / MMA</h2>
-
-    <h3>
+    <h2 style="font-size:20px;">TKD / Kickboxing / MMA</h2>
+    <h3 style="font-size:16px;">
     Master Babak Vosoghi, 8-ci Dan, Novxanı, 0513909912
     </h3>
-
     </center>
 
     <hr>
