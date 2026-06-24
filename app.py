@@ -44,6 +44,11 @@ def home():
             print("NEW VIEW:", ref)  
     
     return f"""
+    <html>
+    <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+
     <center>
 
     <img src="/static/logo.png" width="220">
