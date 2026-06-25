@@ -48,10 +48,22 @@ def home():
     <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
-    <body style="font-family:Arial;font-size:14px;">
+    <body style="
+    font-family:Arial;
+    font-size:14px;
+    margin:0;
+    padding:8px;
+    line-height:1.2;
+    ">
     <center>
-
-    <img src="/static/logo.png" width="220">
+    <div style="
+    width:100%;
+    max-width:700px;
+    margin:auto;
+    text-align:center;
+    box-sizing:border-box;
+    ">
+    <img src="/static/logo.png" width="220" style="margin-bottom:8px;">
 
     <h1 style="font-size:32px;">Cənub Azərbaycan</h1>
 
@@ -59,6 +71,7 @@ def home():
     <h3 style="font-size:16px;">
     Master Babak Vosoghi, 8-ci Dan, Novxanı, 0513909912
     </h3>
+    </div>
     </center>
 
     <hr>
@@ -112,8 +125,12 @@ def home():
     🎁 Şəxsi Linkimi Al
     </button>
 
-</form>
+    </form>
 
+    </div>
+
+    </body>
+    </html>
     """
 
 @app.route("/getlink")
@@ -170,7 +187,14 @@ def getlink():
     response = make_response(f"""
     <html>
 
-    <body style="font-family:Arial;max-width:700px;margin:auto;">
+    <body style="
+    font-family:Arial;
+    margin:0;
+    padding:12px;
+    box-sizing:border-box;
+    width:100%;
+    overflow-x:hidden;
+    ">
 
     <h1>👤 {name}</h1>
 
@@ -231,7 +255,7 @@ def getlink():
     ⚠️ Kampaniya hər ay yenilənir.
     </b>
 
-    <br><br>
+    <br><br>S
     <br><br>
 
 
