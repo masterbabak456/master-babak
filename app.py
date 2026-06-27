@@ -6,16 +6,18 @@ import os
 
 app = Flask(__name__)
 
+# تنظیمات دیتابیس
 db_uri = os.environ.get('DATABASE_URL', 'sqlite:///referrals.db')
 app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-db = SQLAlchemy(app)
-
-# حذف دیتابیس قدیمی اگر وجود دارد (برای جلوگیری از ارور ستون‌ها)
+# --- خط حیاتی برای حل مشکل شما ---
+# اگر فایل دیتابیس وجود داشت، آن را پاک کن تا جدول‌های جدید ساخته شوند
 if os.path.exists('referrals.db'):
     os.remove('referrals.db')
-    print("✅ Old database deleted to prevent errors!")
+    print("✅ Old database deleted to fix column error!")
+
+db = SQLAlchemy(app)
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -25,7 +27,7 @@ class User(db.Model):
 class Visit(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(20), nullable=False)
-    visitor_id = db.Column(db.String(200), nullable=False)
+    visitor_id = db.Column(db.String(200), nullable=False) # این ستون حالا حتما ساخته می‌شود
 
 with app.app_context():
     db.create_all()
@@ -63,13 +65,8 @@ def home():
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
         <title>50% Endirim - Novxanı TKD & MMA</title>
-        <meta name="description" content="Bu videonu izləyin! Taekvondo, Kikboksinq və MMA üzrə məşqlərdə 50%-dək endirim qazanın.">
         <meta property="og:title" content="🥋 50% Endirim - Novxanı TKD & MMA">
         <meta property="og:description" content="Bu videonu izləyin! Taekvondo, Kikboksinq və MMA üzrə məşqlərdə 50%-dək endirim qazanın.">
-        <meta property="og:type" content="website">
-        <meta property="og:url" content="https://master-babak.onrender.com">
-        <meta property="og:image" content="https://master-babak.onrender.com/static/logo.png">
-        
         <style>
             * {{ box-sizing: border-box; margin: 0; padding: 0; }}
             body {{ font-family: Arial, sans-serif; background: #f8f9fa; color: #333; min-height: 100vh; }}
@@ -304,7 +301,7 @@ def admin():
             </style>
         </head>
         <body>
-            <h1>🥋 TKD Dashboard ({total_links} Link)</h1>
+            <h1> TKD Dashboard ({total_links} Link)</h1>
             <div class="table-wrap">
             <table>
                 <tr><th>Code</th><th>Parent</th><th>Subs</th><th>Views</th><th>Discount</th></tr>
