@@ -6,23 +6,23 @@ import os
 
 app = Flask(__name__)
 
-# تنظیمات دیتابیس
 db_uri = os.environ.get('DATABASE_URL', 'sqlite:///referrals.db')
 app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
+# جدول کاربران برای نگهداری رابطه زیرمجموعه‌ها
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(20), unique=True, nullable=False)
-    name = db.Column(db.String(100))
-    parent = db.Column(db.String(20))
+    parent = db.Column(db.String(20)) # کد کسی که این شخص را دعوت کرده
 
+# جدول بازدیدها برای محاسبه امتیاز ویدیو
 class Visit(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(20), nullable=False)
-    visitor = db.Column(db.String(200))
+    visitor_id = db.Column(db.String(200), nullable=False)
 
 with app.app_context():
     db.create_all()
@@ -37,19 +37,21 @@ def calculate_discount(count):
 
 @app.route("/")
 def home():
-    ref = request.args.get("ref", "ROOT")
+    ref = request.args.get("ref", None)
     
-    if ref != "ROOT":
-        visitor = request.headers.get("User-Agent", "Unknown")
-        old_visit = Visit.query.filter_by(code=ref, visitor=visitor).first()
+    # ثبت بازدید اگر لینک دارای ref باشد
+    if ref:
+        visitor_id = request.headers.get("User-Agent", "Unknown") + "_" + request.remote_addr
+        old_visit = Visit.query.filter_by(code=ref, visitor_id=visitor_id).first()
+        
         if not old_visit:
-            visit = Visit(code=ref, visitor=visitor)
+            visit = Visit(code=ref, visitor_id=visitor_id)
             db.session.add(visit)
             db.session.commit()
+            print(f"NEW VIEW for code: {ref}")
     
-    safe_ref = escape(ref)
+    safe_ref = escape(ref) if ref else ""
     
-    # طراحی فشرده و موبایل-فرست برای صفحه اول
     return f"""
     <!DOCTYPE html>
     <html>
@@ -58,20 +60,22 @@ def home():
         <title>Cənub Azərbaycan</title>
         <style>
             * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-            body {{ font-family: Arial, sans-serif; background: #f8f9fa; color: #333; display: flex; flex-direction: column; min-height: 100vh; }}
-            .container {{ width: 100%; max-width: 600px; margin: 0 auto; padding: 15px; flex: 1; display: flex; flex-direction: column; align-items: center; text-align: center; }}
-            img {{ width: 160px; height: auto; margin-bottom: 10px; }}
-            h1 {{ font-size: 24px; margin-bottom: 5px; }}
-            h2 {{ font-size: 16px; color: #555; margin-bottom: 5px; }}
-            h3 {{ font-size: 14px; color: #777; margin-bottom: 15px; line-height: 1.4; }}
-            video {{ width: 100%; border-radius: 8px; margin-bottom: 15px; background: #000; }}
-            .promo {{ font-size: 13px; margin-bottom: 15px; line-height: 1.5; }}
-            .btn-main {{ 
-                width: 100%; padding: 16px; font-size: 20px; font-weight: bold;
-                background: #28a745; color: white; border: none; border-radius: 12px;
-                cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            body {{ font-family: Arial, sans-serif; background: #f8f9fa; color: #333; min-height: 100vh; }}
+            .container {{ width: 100%; max-width: 600px; margin: 0 auto; padding: 15px; text-align: center; }}
+            img {{ width: 140px; height: auto; margin-bottom: 8px; }}
+            h1 {{ font-size: 22px; margin-bottom: 4px; }}
+            h2 {{ font-size: 15px; color: #555; margin-bottom: 4px; }}
+            h3 {{ font-size: 13px; color: #777; margin-bottom: 12px; line-height: 1.4; }}
+            video {{ 
+                width: 100%; height: 140px; object-fit: cover; border-radius: 10px; 
+                margin-bottom: 15px; background: #000; display: block;
             }}
-            hr {{ width: 100%; border: 0; border-top: 1px solid #ddd; margin: 15px 0; }}
+            .promo {{ font-size: 13px; margin-bottom: 15px; line-height: 1.5; background: #fff; padding: 10px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }}
+            .btn-main {{ 
+                width: 100%; padding: 18px; font-size: 20px; font-weight: bold;
+                background: #28a745; color: white; border: none; border-radius: 12px;
+                cursor: pointer; box-shadow: 0 4px 10px rgba(40, 167, 69, 0.3);
+            }}
         </style>
     </head>
     <body>
@@ -81,7 +85,7 @@ def home():
             <h2>TKD / Kickboxing / MMA</h2>
             <h3>Master Babak Vosoghi, 8-ci Dan<br>Novxanı, 0513909912</h3>
             
-            <video controls playsinline>
+            <video controls playsinline preload="metadata">
                 <source src="/static/videomaster.mp4" type="video/mp4">
             </video>
 
@@ -102,13 +106,22 @@ def home():
 
 @app.route("/getlink")
 def getlink():
-    parent = request.args.get("parent", "ROOT")
-    name = request.args.get("name", "Qonaq")
+    parent = request.args.get("parent", "")
     
+    # ساخت کد جدید و ثبت آن به عنوان زیرمجموعه‌ی parent
     mycode = str(uuid.uuid4())[:8]
-    new_user = User(code=mycode, name=name, parent=parent)
-    db.session.add(new_user)
-    db.session.commit()
+    
+    if parent and parent != "ROOT":
+        new_user = User(code=mycode, parent=parent)
+        db.session.add(new_user)
+        db.session.commit()
+        print(f"NEW SUBSCRIBER: {mycode} under parent {parent}")
+    
+    # محاسبه امتیاز بر اساس بازدیدها
+    count = Visit.query.filter_by(code=mycode).count()
+    discount, next_level = calculate_discount(count)
+    remaining = max(0, next_level - count)
+    progress = min(100, (count / next_level) * 100) if next_level > 0 else 0
     
     response = make_response(f"""
     <!DOCTYPE html>
@@ -143,8 +156,8 @@ def getlink():
     </head>
     <body>
         <div class="card">
-            <h1>{escape(name)}</h1>
-            <h2>Şəxsi Linkiniz Hazırdır!</h2>
+            <h1>Şəxsi Linkiniz</h1>
+            <h2>Hazırdır!</h2>
             
             <input value="https://master-babak.onrender.com/?ref={mycode}" readonly onclick="this.select()">
             
@@ -153,10 +166,10 @@ def getlink():
             </a>
 
             <div class="stats">
-                <p>Dəvət sayı: <b>0</b></p>
-                <p>Endirim: <b>0%</b></p>
-                <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
-                <p>Qalan: <b>10 nəfər</b></p>
+                <p>Dəvət sayı (Baxış): <b>{count}</b></p>
+                <p>Endirim: <b>{discount}</b></p>
+                <div class="progress-bar"><div class="progress-fill" style="width:{progress}%"></div></div>
+                <p>Qalan: <b>{remaining} nəfər</b></p>
             </div>
 
             <p class="note">⚠️ Kampaniya hər ay yenilənir.</p>
@@ -167,10 +180,11 @@ def getlink():
     response.set_cookie("mycode", mycode, max_age=60*60*24*365)
     return response
 
-@app.route("/mylink/<code>")
-def mylink(code):
-    user = User.query.filter_by(code=code).first()
-    if not user: return redirect("/")
+@app.route("/mylink")
+def mylink():
+    code = request.cookies.get("mycode")
+    if not code:
+        return redirect("/")
     
     count = Visit.query.filter_by(code=code).count()
     discount, next_level = calculate_discount(count)
@@ -209,14 +223,13 @@ def mylink(code):
     </head>
     <body>
         <div class="card">
-            <h1>{escape(user.name)}</h1>
-            <h2>Şəxsi Linkiniz</h2>
+            <h1>Şəxsi Linkiniz</h1>
             <input value="https://master-babak.onrender.com/?ref={code}" readonly onclick="this.select()">
             <a href="https://wa.me/?text= TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={code}" class="btn-wa">
                  WhatsApp-da Paylaş
             </a>
             <div class="stats">
-                <p>Dəvət sayı: <b>{count}</b></p>
+                <p>Dəvət sayı (Baxış): <b>{count}</b></p>
                 <p>Endirim: <b>{discount}</b></p>
                 <div class="progress-bar"><div class="progress-fill" style="width:{progress}%"></div></div>
                 <p>Qalan: <b>{remaining} nəfər</b></p>
@@ -251,8 +264,9 @@ def admin():
         </html>
         """
 
+    # دریافت تمام کاربران و محاسبه زیرمجموعه و بازدید برای هر کدام
     users = User.query.all()
-    total_users = len(users)
+    total_links = len(users)
     
     html = f"""
     <!DOCTYPE html>
@@ -267,29 +281,34 @@ def admin():
             table {{ border-collapse:collapse; width:100%; min-width: 600px; background:white; color:black; font-size: 14px; }}
             th, td {{ padding: 10px; border: 1px solid #ddd; text-align: left; }}
             th {{ background: #f1f1f1; }}
-            .bar-bg {{ width:100px; height:15px; background:#eee; border-radius:8px; overflow:hidden; display:inline-block; vertical-align:middle; margin-right:5px; }}
+            .bar-bg {{ width:80px; height:15px; background:#eee; border-radius:8px; overflow:hidden; display:inline-block; vertical-align:middle; margin-right:5px; }}
             .bar-fill {{ height:100%; background:green; }}
         </style>
     </head>
     <body>
-        <h1> TKD Dashboard ({total_users})</h1>
+        <h1>🥋 TKD Dashboard ({total_links} Link)</h1>
         <div class="table-wrap">
         <table>
-            <tr><th>Name</th><th>Code</th><th>Parent</th><th>Views</th><th>Discount</th></tr>
+            <tr><th>Code</th><th>Parent</th><th>Subs (Zir-majmoe)</th><th>Views (Emtiaz)</th><th>Discount</th></tr>
     """
     
     for user in users:
-        count = Visit.query.filter_by(code=user.code).count()
-        discount, next_level = calculate_discount(count)
-        remaining = max(0, next_level - count)
-        progress = min(100, (count / next_level) * 100) if next_level > 0 else 0
+        # شمارش زیرمجموعه‌ها
+        subs_count = User.query.filter_by(parent=user.code).count()
+        
+        # شمارش بازدیدها (امتیاز)
+        views_count = Visit.query.filter_by(code=user.code).count()
+        
+        discount, next_level = calculate_discount(views_count)
+        remaining = max(0, next_level - views_count)
+        progress = min(100, (views_count / next_level) * 100) if next_level > 0 else 0
         
         html += f"""
         <tr>
-            <td>{escape(user.name)}</td>
             <td>{user.code}</td>
-            <td>{user.parent}</td>
-            <td>{count}</td>
+            <td>{user.parent if user.parent else '-'}</td>
+            <td><b>{subs_count}</b></td>
+            <td>{views_count}</td>
             <td>
                 {discount}<br>
                 <div class="bar-bg"><div class="bar-fill" style="width:{progress}%"></div></div>
