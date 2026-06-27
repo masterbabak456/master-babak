@@ -1,451 +1,314 @@
 from flask import Flask, request, redirect, make_response
-import uuid
 from flask_sqlalchemy import SQLAlchemy
+from markupsafe import escape
+import uuid
+import os
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///referrals.db'
+
+# تنظیمات دیتابیس
+db_uri = os.environ.get('DATABASE_URL', 'sqlite:///referrals.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
+
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    code = db.Column(db.String(20), unique=True)
+    code = db.Column(db.String(20), unique=True, nullable=False)
     name = db.Column(db.String(100))
     parent = db.Column(db.String(20))
+
 class Visit(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    code = db.Column(db.String(20))
+    code = db.Column(db.String(20), nullable=False)
     visitor = db.Column(db.String(200))
+
 with app.app_context():
     db.create_all()
+
+def calculate_discount(count):
+    if count >= 50: return "50%", 50
+    if count >= 40: return "40%", 40
+    if count >= 30: return "30%", 30
+    if count >= 20: return "20%", 20
+    if count >= 10: return "10%", 10
+    return "0%", 10
+
 @app.route("/")
 def home():
-    
     ref = request.args.get("ref", "ROOT")
+    
     if ref != "ROOT":
-
-        visitor = request.headers.get("User-Agent")
-
-        old_visit = Visit.query.filter_by(
-            code=ref,
-            visitor=visitor
-        ).first()
-
+        visitor = request.headers.get("User-Agent", "Unknown")
+        old_visit = Visit.query.filter_by(code=ref, visitor=visitor).first()
         if not old_visit:
-
-            visit = Visit(
-                code=ref,
-                visitor=visitor
-            )
-
+            visit = Visit(code=ref, visitor=visitor)
             db.session.add(visit)
             db.session.commit()
-
-            print("NEW VIEW:", ref)  
     
+    safe_ref = escape(ref)
+    
+    # طراحی فشرده و موبایل-فرست برای صفحه اول
     return f"""
+    <!DOCTYPE html>
     <html>
     <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <title>Cənub Azərbaycan</title>
+        <style>
+            * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+            body {{ font-family: Arial, sans-serif; background: #f8f9fa; color: #333; display: flex; flex-direction: column; min-height: 100vh; }}
+            .container {{ width: 100%; max-width: 600px; margin: 0 auto; padding: 15px; flex: 1; display: flex; flex-direction: column; align-items: center; text-align: center; }}
+            img {{ width: 160px; height: auto; margin-bottom: 10px; }}
+            h1 {{ font-size: 24px; margin-bottom: 5px; }}
+            h2 {{ font-size: 16px; color: #555; margin-bottom: 5px; }}
+            h3 {{ font-size: 14px; color: #777; margin-bottom: 15px; line-height: 1.4; }}
+            video {{ width: 100%; border-radius: 8px; margin-bottom: 15px; background: #000; }}
+            .promo {{ font-size: 13px; margin-bottom: 15px; line-height: 1.5; }}
+            .btn-main {{ 
+                width: 100%; padding: 16px; font-size: 20px; font-weight: bold;
+                background: #28a745; color: white; border: none; border-radius: 12px;
+                cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            }}
+            hr {{ width: 100%; border: 0; border-top: 1px solid #ddd; margin: 15px 0; }}
+        </style>
     </head>
-    <body style="
-    font-family:Arial;
-    font-size:14px;
-    margin:0;
-    padding:8px;
-    line-height:1.2;
-    ">
-    <center>
-    <div style="
-    width:100%;
-    max-width:700px;
-    margin:auto;
-    text-align:center;
-    box-sizing:border-box;
-    ">
-    <img src="/static/logo.png" width="220" style="margin-bottom:8px;">
+    <body>
+        <div class="container">
+            <img src="/static/logo.png" alt="Logo">
+            <h1>Cənub Azərbaycan</h1>
+            <h2>TKD / Kickboxing / MMA</h2>
+            <h3>Master Babak Vosoghi, 8-ci Dan<br>Novxanı, 0513909912</h3>
+            
+            <video controls playsinline>
+                <source src="/static/videomaster.mp4" type="video/mp4">
+            </video>
 
-    <h1 style="font-size:32px;">Cənub Azərbaycan</h1>
+            <div class="promo">
+                 <b>Endirim Kampaniyası</b><br>
+                Şəxsi linkinizi dostlarınıza göndərin.<br>
+                <b>10→10% | 20→20% | 30→30% | 40→40% | 50→50%</b>
+            </div>
 
-    <h2 style="font-size:20px;">TKD / Kickboxing / MMA</h2>
-    <h3 style="font-size:16px;">
-    Master Babak Vosoghi, 8-ci Dan, Novxanı, 0513909912
-    </h3>
-    </div>
-    </center>
-
-    <hr>
-    <center>
-
-    <video
-    controls
-    style="
-    width:90%;
-    max-width:700px;
-    height:120px;
-    object-fit:contain;
-    ">
-        <source src="/static/videomaster.mp4" type="video/mp4">
-    </video>
-
-    </center>
-
-    <br>
-
-    <br>
-    <h3>🎁 Endirim Kampaniyası</h3>
-
-    <p>
-    Şəxsi linkinizi dostlarınıza göndərin.
-    <br><br>
-
-    <b>
-    10→10% | 20→20% | 30→30% | 40→40% | 50→50%
-    </b>
-
-    <br><br>
- 
-    </p>
-
-    <hr>
-
-    <form action="/getlink">
-
-    <input type="hidden" name="parent" value="{ref}">
-
-    <input type="hidden" name="name" value=""> 
-    <button style="
-    font-size:28px;
-    padding:18px;
-    background:#28a745;
-    color:white;
-    border:none;
-    border-radius:10px;
-    ">
-    🎁 Şəxsi Linkimi Al
-    </button>
-
-    </form>
-
-    </div>
-
+            <form action="/getlink" style="width:100%">
+                <input type="hidden" name="parent" value="{safe_ref}">
+                <button type="submit" class="btn-main">🎁 Şəxsi Linkimi Al</button>
+            </form>
+        </div>
     </body>
     </html>
     """
 
 @app.route("/getlink")
 def getlink():
-
-    parent = request.args.get("parent","ROOT")
-    name = request.args.get("name","Unknown")
-
-    existing = User.query.filter_by(name=name).first()
-    print("NAME =", name)
-    print("EXISTING =", existing)
-
-    if existing:
-        mycode = existing.code
-
-    else:
-        mycode = str(uuid.uuid4())[:8]
-
-        new_user = User(
-            code=mycode,
-            name=name,
-            parent=parent
-        )
-
-
-        db.session.add(new_user)
-        db.session.commit()
-        print("USER SAVED:", name, mycode, parent)
-    count = Visit.query.filter_by(code=mycode).count()
-
-    if count >= 50:
-        discount = "50%"
-    elif count >= 40:
-        discount = "40%"
-    elif count >= 30:
-        discount = "30%"
-    elif count >= 20:
-        discount = "20%"
-    elif count >= 10:
-        discount = "10%"
-    else:
-        discount = "0%"
-
-    remaining = 10 - count
-
-    if remaining < 0:
-        remaining = 0
-    progress = (count / 10) * 100
-
-    if progress > 100:
-        progress = 100
-
-     
+    parent = request.args.get("parent", "ROOT")
+    name = request.args.get("name", "Qonaq")
+    
+    mycode = str(uuid.uuid4())[:8]
+    new_user = User(code=mycode, name=name, parent=parent)
+    db.session.add(new_user)
+    db.session.commit()
+    
     response = make_response(f"""
+    <!DOCTYPE html>
     <html>
+    <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <title>Linkiniz Hazırdır</title>
+        <style>
+            * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+            body {{ 
+                font-family: Arial, sans-serif; background: #fff; color: #333; 
+                width: 100vw; min-height: 100vh; padding: 20px; 
+                display: flex; flex-direction: column; align-items: center; 
+            }}
+            .card {{ width: 100%; max-width: 100%; text-align: center; }}
+            h1 {{ font-size: 22px; margin-bottom: 10px; }}
+            h2 {{ font-size: 18px; color: #28a745; margin-bottom: 20px; }}
+            input {{ 
+                width: 100%; padding: 14px; font-size: 16px; border: 2px solid #eee; 
+                border-radius: 8px; text-align: center; margin-bottom: 20px; background: #f9f9f9;
+            }}
+            .btn-wa {{ 
+                width: 100%; padding: 16px; font-size: 18px; font-weight: bold;
+                background: #25D366; color: white; border: none; border-radius: 12px;
+                cursor: pointer; margin-bottom: 20px; display: block; text-decoration: none;
+            }}
+            .stats {{ font-size: 14px; color: #666; line-height: 1.6; }}
+            .progress-bar {{ width: 100%; height: 25px; background: #eee; border-radius: 12px; overflow: hidden; margin: 10px 0; }}
+            .progress-fill {{ height: 100%; background: #28a745; transition: width 0.3s; }}
+            .note {{ font-size: 12px; color: #999; margin-top: 30px; }}
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h1>{escape(name)}</h1>
+            <h2>Şəxsi Linkiniz Hazırdır!</h2>
+            
+            <input value="https://master-babak.onrender.com/?ref={mycode}" readonly onclick="this.select()">
+            
+            <a href="https://wa.me/?text=🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={mycode}" class="btn-wa">
+                📲 WhatsApp-da Paylaş
+            </a>
 
-    <body style="
-    font-family:Arial;
-    margin:0;
-    padding:12px;
-    box-sizing:border-box;
-    width:100%;
-    overflow-x:hidden;
-    ">
+            <div class="stats">
+                <p>Dəvət sayı: <b>0</b></p>
+                <p>Endirim: <b>0%</b></p>
+                <div class="progress-bar"><div class="progress-fill" style="width:0%"></div></div>
+                <p>Qalan: <b>10 nəfər</b></p>
+            </div>
 
-    <h1>👤 {name}</h1>
-
-    <h2>🎁 Şəxsi Linkiniz</h2>
-
-    <input
-    value="https://master-babak.onrender.com/?ref={mycode}"
-    style="width:100%;padding:10px;font-size:16px;"
-    readonly>
-
-    <br><br>
-
-    <a href="https://wa.me/?text=🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={mycode}">
-    <button style="
-    padding:15px;
-    font-size:20px;
-    background:green;
-    color:white;
-    border:none;
-    cursor:pointer;
-    ">
-    📲 WhatsApp-da Paylaş
-    </button>
-    </a>
-
-    <br><br>
-    <h3>📢 Linki dostlarınıza göndərin</h3>
-
-    <h3>⏰ Kampaniya müddəti: 1 ay</h3>
-
-    <hr>
-
-    <h2>Dəvət sayı: {count}</h2>
-
-    <h2>Endirim: {discount}</h2>
-
-    <div style="
-    width:100%;
-    height:30px;
-    border:1px solid black;
-    ">
-
-    <div style="
-    width:{progress}%;
-    height:30px;
-    background:green;
-    ">
-    </div>
-
-    </div>
-
-    <br>
-
-    <b>Qalan: {remaining} nəfər</b>
-    <br><br>
-
-    <b>
-    ⚠️ Kampaniya hər ay yenilənir.
-    </b>
-
-    <br><br>S
-    <br><br>
-
-
+            <p class="note">⚠️ Kampaniya hər ay yenilənir.</p>
+        </div>
     </body>
     </html>
     """)
-
-    response.set_cookie(
-        "mycode",
-        mycode,
-        max_age=60*60*24*365
-    )
-
+    response.set_cookie("mycode", mycode, max_age=60*60*24*365)
     return response
 
 @app.route("/mylink/<code>")
 def mylink(code):
-
     user = User.query.filter_by(code=code).first()
-
-    if not user:
-        return redirect("/")
-
+    if not user: return redirect("/")
+    
     count = Visit.query.filter_by(code=code).count()
-
-    if count >= 50:
-        discount = "50%"
-    elif count >= 40:
-        discount = "40%"
-    elif count >= 30:
-        discount = "30%"
-    elif count >= 20:
-        discount = "20%"
-    elif count >= 10:
-        discount = "10%"
-    else:
-        discount = "0%"
-
-    remaining = 10 - count
-
-    if remaining < 0:
-        remaining = 0
-
-    progress = (count / 10) * 100
-
-    if progress > 100:
-        progress = 100
-
+    discount, next_level = calculate_discount(count)
+    remaining = max(0, next_level - count)
+    progress = min(100, (count / next_level) * 100) if next_level > 0 else 0
+    
     return f"""
-    <body style="font-family:Arial;max-width:700px;margin:auto;">
-
-    <h1>👤 {user.name}</h1>
-
-    <h2>🎁 Şəxsi Linkiniz</h2>
-
-    <input
-    value="https://master-babak.onrender.com/?ref={code}"
-    style="width:100%;padding:10px;font-size:16px;"
-    readonly>
-
-    <br><br>
-
-    <a href="https://wa.me/?text=🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={code}">
-    <button style="
-    padding:15px;
-    font-size:20px;
-    background:green;
-    color:white;
-    border:none;
-    ">
-    📲 WhatsApp-da Paylaş
-    </button>
-    </a>
-
-    <br><br>
-
-    <h2>Dəvət sayı: {count}</h2>
-
-    <h2>Endirim: {discount}</h2>
-
-    </body>
-    """
-@app.route("/admin")
-def admin():
-    print("ADMIN OPENED")
-    users = User.query.all()
-
-    total_users = len(users)
-
-    html = f"""
+    <!DOCTYPE html>
     <html>
     <head>
-    <title>Referral Dashboard</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <title>Linkim</title>
+        <style>
+            * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+            body {{ 
+                font-family: Arial, sans-serif; background: #fff; color: #333; 
+                width: 100vw; min-height: 100vh; padding: 20px; 
+                display: flex; flex-direction: column; align-items: center; 
+            }}
+            .card {{ width: 100%; max-width: 100%; text-align: center; }}
+            h1 {{ font-size: 22px; margin-bottom: 10px; }}
+            h2 {{ font-size: 18px; color: #28a745; margin-bottom: 20px; }}
+            input {{ 
+                width: 100%; padding: 14px; font-size: 16px; border: 2px solid #eee; 
+                border-radius: 8px; text-align: center; margin-bottom: 20px; background: #f9f9f9;
+            }}
+            .btn-wa {{ 
+                width: 100%; padding: 16px; font-size: 18px; font-weight: bold;
+                background: #25D366; color: white; border: none; border-radius: 12px;
+                cursor: pointer; margin-bottom: 20px; display: block; text-decoration: none;
+            }}
+            .stats {{ font-size: 14px; color: #666; line-height: 1.6; }}
+            .progress-bar {{ width: 100%; height: 25px; background: #eee; border-radius: 12px; overflow: hidden; margin: 10px 0; }}
+            .progress-fill {{ height: 100%; background: #28a745; transition: width 0.3s; }}
+        </style>
     </head>
-
-    <body style="font-family:Arial;background:#111;color:white;">
-
-    <h1>🥋 TKD Referral Dashboard</h1>
-
-    <h2>Total Members: {total_users}</h2>
-
-    <table border="1" cellpadding="10"
-    style="border-collapse:collapse;width:100%;background:white;color:black;">
-
-    <tr>
-      <th>Name</th>
-      <th>Code</th>
-      <th>Parent</th>
-      <th>Referrals</th>
-      <th>Discount</th>  
-    </tr>
+    <body>
+        <div class="card">
+            <h1>{escape(user.name)}</h1>
+            <h2>Şəxsi Linkiniz</h2>
+            <input value="https://master-babak.onrender.com/?ref={code}" readonly onclick="this.select()">
+            <a href="https://wa.me/?text= TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={code}" class="btn-wa">
+                 WhatsApp-da Paylaş
+            </a>
+            <div class="stats">
+                <p>Dəvət sayı: <b>{count}</b></p>
+                <p>Endirim: <b>{discount}</b></p>
+                <div class="progress-bar"><div class="progress-fill" style="width:{progress}%"></div></div>
+                <p>Qalan: <b>{remaining} nəfər</b></p>
+            </div>
+        </div>
+    </body>
+    </html>
     """
 
+@app.route("/admin")
+def admin():
+    stored_key = request.cookies.get("admin_key")
+    url_key = request.args.get("key", "")
+    
+    if stored_key != "babak1234" and url_key != "babak1234":
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+        <body style="font-family:Arial; background:#222; color:white; display:flex; justify-content:center; align-items:center; height:100vh; margin:0;">
+            <div style="text-align:center; padding:30px; border:1px solid #444; border-radius:10px; width:90%; max-width:350px;">
+                <h2>🔒 Admin Panel</h2>
+                <form action="/admin" method="get">
+                    <input type="password" name="key" placeholder="Password" 
+                           style="padding:12px; font-size:16px; border-radius:5px; border:none; width:100%; margin-bottom:15px;">
+                    <button type="submit" style="padding:12px; font-size:16px; background:#28a745; color:white; border:none; border-radius:5px; cursor:pointer; width:100%;">
+                        Daxil ol
+                    </button>
+                </form>
+            </div>
+        </body>
+        </html>
+        """
+
+    users = User.query.all()
+    total_users = len(users)
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Admin Dashboard</title>
+        <style>
+            body {{ font-family:Arial; background:#111; color:white; padding:15px; margin:0; }}
+            h1 {{ font-size: 20px; margin-bottom: 10px; }}
+            .table-wrap {{ overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top: 15px; }}
+            table {{ border-collapse:collapse; width:100%; min-width: 600px; background:white; color:black; font-size: 14px; }}
+            th, td {{ padding: 10px; border: 1px solid #ddd; text-align: left; }}
+            th {{ background: #f1f1f1; }}
+            .bar-bg {{ width:100px; height:15px; background:#eee; border-radius:8px; overflow:hidden; display:inline-block; vertical-align:middle; margin-right:5px; }}
+            .bar-fill {{ height:100%; background:green; }}
+        </style>
+    </head>
+    <body>
+        <h1> TKD Dashboard ({total_users})</h1>
+        <div class="table-wrap">
+        <table>
+            <tr><th>Name</th><th>Code</th><th>Parent</th><th>Views</th><th>Discount</th></tr>
+    """
+    
     for user in users:
-
-        count = User.query.filter_by(parent=user.code).count()
-
-        if count >= 50:
-            discount = "50%"
-        elif count >= 40:
-            discount = "40%"
-        elif count >= 30:
-            discount = "30%"
-        elif count >= 20:
-            discount = "20%"
-        elif count >= 10:
-            discount = "10%"
-        else:
-            discount = "0%"
-        if count < 10:
-            next_level = 10
-        elif count < 20:
-            next_level = 20
-        elif count < 30:
-            next_level = 30
-        elif count < 40:
-            next_level = 40
-        elif count < 50:
-            next_level = 50
-        else:
-            next_level = 50
-
-        remaining = next_level - count
-
-        progress = (count / 50) * 100
-
-        if progress > 100:
-            progress = 100
-
+        count = Visit.query.filter_by(code=user.code).count()
+        discount, next_level = calculate_discount(count)
+        remaining = max(0, next_level - count)
+        progress = min(100, (count / next_level) * 100) if next_level > 0 else 0
+        
         html += f"""
         <tr>
-            <td>{user.name}</td>
+            <td>{escape(user.name)}</td>
             <td>{user.code}</td>
             <td>{user.parent}</td>
             <td>{count}</td>
             <td>
-{discount}
-<br><br>
-
-<div style="width:200px;border:1px solid black;">
-<div style="
-width:{progress}%;
-height:20px;
-background:green;">
-</div>
-</div>
-
-Qalan:
-{remaining}
-</td>
+                {discount}<br>
+                <div class="bar-bg"><div class="bar-fill" style="width:{progress}%"></div></div>
+                <small>({remaining} qalıb)</small>
+            </td>
         </tr>
         """
-
+    
     html += """
-    </table>
+        </table>
+        </div>
     </body>
     </html>
     """
-    html += """
-    <br><br>
+    
+    response = make_response(html)
+    response.set_cookie("admin_key", "babak1234", max_age=60*60*24*7)
+    return response
 
-    <h2>🎁 Endirim Sistemi</h2>
-
-    10 nəfər = 10% endirim<br>
-    20 nəfər = 20% endirim<br>
-    30 nəfər = 30% endirim<br>
-    40 nəfər = 40% endirim<br>
-    50 nəfər = 50% endirim<br>
-
-    """
-    return html
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
