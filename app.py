@@ -14,16 +14,17 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# جداول دیتابیس
+# جدول کاربران: فقط برای نگهداری رابطه "چه کسی چه کسی را دعوت کرده"
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(20), unique=True, nullable=False)
-    parent = db.Column(db.String(20))
+    parent = db.Column(db.String(20)) # کد کسی که این شخص را دعوت کرده
 
+# جدول بازدیدها: فقط برای محاسبه امتیاز (دیدن ویدیو)
 class Visit(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    code = db.Column(db.String(20), nullable=False)
-    visitor_id = db.Column(db.String(200), nullable=False)
+    code = db.Column(db.String(20), nullable=False) # کدی که دیده شده
+    visitor_id = db.Column(db.String(200), nullable=False) # شناسه دستگاه بیننده
 
 with app.app_context():
     try:
@@ -44,7 +45,7 @@ def calculate_discount(count):
 def home():
     ref = request.args.get("ref", None)
     
-    # ثبت بازدید خودکار
+    # ۱. ثبت امتیاز (فقط وقتی ویدیو/صفحه دیده شود)
     if ref:
         try:
             visitor_id = request.headers.get("User-Agent", "Unknown") + "_" + request.remote_addr
@@ -54,6 +55,7 @@ def home():
                 visit = Visit(code=ref, visitor_id=visitor_id)
                 db.session.add(visit)
                 db.session.commit()
+                print(f"New View (Emtiaz) for code: {ref}")
         except Exception as e:
             print(f"Visit Error: {e}")
     
@@ -78,8 +80,8 @@ def home():
             /* ویدیوی نوار باریک */
             video {{ 
                 width: 100%; 
-                height: 140px; /* ارتفاع ثابت و کم */
-                object-fit: contain; /* نمایش کامل ویدیو بدون برش */
+                height: 140px; 
+                object-fit: contain; 
                 background: #000; 
                 display: block;
                 margin-bottom: 15px;
@@ -113,6 +115,7 @@ def home():
                 <b>10→10% | 20→20% | 30→30% | 40→40% | 50→50%</b>
             </div>
 
+            <!-- ۲. دکمه دریافت لینک (ثبت زیرمجموعه) -->
             <form action="/getlink" style="width:100%">
                 <input type="hidden" name="parent" value="{safe_ref}">
                 <button type="submit" class="btn-main">🎁 Şəxsi Linkimi Al</button>
@@ -129,11 +132,14 @@ def getlink():
     try:
         mycode = str(uuid.uuid4())[:8]
         
+        # ۳. ثبت زیرمجموعه (فقط وقتی دکمه زده شود)
         if parent and parent != "ROOT":
             new_user = User(code=mycode, parent=parent)
             db.session.add(new_user)
             db.session.commit()
+            print(f"New Subscriber (Zirmajmoe): {mycode} under {parent}")
         
+        # محاسبه امتیاز برای کاربر جدید (هنوز بازدیدی نداشته)
         count = Visit.query.filter_by(code=mycode).count()
         discount, next_level = calculate_discount(count)
         remaining = max(0, next_level - count)
@@ -178,7 +184,7 @@ def getlink():
                 <input value="https://master-babak.onrender.com/?ref={mycode}" readonly onclick="this.select()">
                 
                 <a href="https://wa.me/?text=🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={mycode}" class="btn-wa">
-                    📲 WhatsApp-da Paylaş
+                     WhatsApp-da Paylaş
                 </a>
 
                 <div class="stats">
@@ -188,7 +194,7 @@ def getlink():
                     <p>Qalan: <b>{remaining} nəfər</b></p>
                 </div>
 
-                <p class="note">⚠️ Kampaniya hər ay yenilənir.</p>
+                <p class="note">️ Kampaniya hər ay yenilənir.</p>
             </div>
         </body>
         </html>
@@ -313,11 +319,14 @@ def admin():
             <h1>🥋 TKD Dashboard ({total_links} Link)</h1>
             <div class="table-wrap">
             <table>
-                <tr><th>Code</th><th>Parent</th><th>Subs</th><th>Views</th><th>Discount</th></tr>
+                <tr><th>Code</th><th>Parent</th><th>Subs (Zir-majmoe)</th><th>Views (Emtiaz)</th><th>Discount</th></tr>
         """
         
         for user in users:
+            # شمارش زیرمجموعه‌ها (تعداد کسانی که با این کد لینک گرفته‌اند)
             subs_count = User.query.filter_by(parent=user.code).count()
+            
+            # شمارش بازدیدها (تعداد دفعاتی که لینک این کد دیده شده)
             views_count = Visit.query.filter_by(code=user.code).count()
             
             discount, next_level = calculate_discount(views_count)
