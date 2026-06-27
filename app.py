@@ -3,18 +3,20 @@ from flask_sqlalchemy import SQLAlchemy
 from markupsafe import escape
 import uuid
 import os
-import traceback
 
 app = Flask(__name__)
 
-# تنظیمات دیتابیس
 db_uri = os.environ.get('DATABASE_URL', 'sqlite:///referrals.db')
 app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# جداول دیتابیس
+# حذف دیتابیس قدیمی اگر وجود دارد (برای جلوگیری از ارور ستون‌ها)
+if os.path.exists('referrals.db'):
+    os.remove('referrals.db')
+    print("✅ Old database deleted to prevent errors!")
+
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(20), unique=True, nullable=False)
@@ -25,16 +27,8 @@ class Visit(db.Model):
     code = db.Column(db.String(20), nullable=False)
     visitor_id = db.Column(db.String(200), nullable=False)
 
-# تابع ایمن برای ساخت دیتابیس
-def init_db():
-    try:
-        with app.app_context():
-            db.create_all()
-            print("Database initialized successfully.")
-    except Exception as e:
-        print(f"DB Init Error: {e}")
-
-init_db()
+with app.app_context():
+    db.create_all()
 
 def calculate_discount(count):
     if count >= 50: return "50%", 50
@@ -48,7 +42,6 @@ def calculate_discount(count):
 def home():
     ref = request.args.get("ref", None)
     
-    # ثبت بازدید خودکار
     if ref:
         try:
             visitor_id = request.headers.get("User-Agent", "Unknown") + "_" + request.remote_addr
@@ -198,8 +191,7 @@ def getlink():
         return response
         
     except Exception as e:
-        print(f"Getlink Error: {traceback.format_exc()}")
-        # اگر ارور داد، کاربر را به صفحه اول برگردان instead of showing error
+        print(f"Getlink Error: {e}")
         return redirect("/")
 
 @app.route("/mylink")
@@ -262,7 +254,7 @@ def mylink():
         </html>
         """
     except Exception as e:
-        print(f"Mylink Error: {traceback.format_exc()}")
+        print(f"Mylink Error: {e}")
         return redirect("/")
 
 @app.route("/admin")
@@ -277,7 +269,7 @@ def admin():
         <head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
         <body style="font-family:Arial; background:#222; color:white; display:flex; justify-content:center; align-items:center; height:100vh; margin:0;">
             <div style="text-align:center; padding:30px; border:1px solid #444; border-radius:10px; width:90%; max-width:350px;">
-                <h2>🔒 Admin Panel</h2>
+                <h2> Admin Panel</h2>
                 <form action="/admin" method="get">
                     <input type="password" name="key" placeholder="Password" 
                            style="padding:12px; font-size:16px; border-radius:5px; border:none; width:100%; margin-bottom:15px;">
@@ -352,7 +344,7 @@ def admin():
         return response
         
     except Exception as e:
-        print(f"Admin Error: {traceback.format_exc()}")
+        print(f"Admin Error: {e}")
         return "<h1>Admin panelində xəta var.</h1>", 500
 
 if __name__ == "__main__":
