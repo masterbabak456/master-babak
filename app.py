@@ -14,24 +14,27 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# جدول کاربران: فقط برای نگهداری رابطه "چه کسی چه کسی را دعوت کرده"
+# جداول دیتابیس
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(20), unique=True, nullable=False)
-    parent = db.Column(db.String(20)) # کد کسی که این شخص را دعوت کرده
+    parent = db.Column(db.String(20))
 
-# جدول بازدیدها: فقط برای محاسبه امتیاز (دیدن ویدیو)
 class Visit(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    code = db.Column(db.String(20), nullable=False) # کدی که دیده شده
-    visitor_id = db.Column(db.String(200), nullable=False) # شناسه دستگاه بیننده
+    code = db.Column(db.String(20), nullable=False)
+    visitor_id = db.Column(db.String(200), nullable=False)
 
-with app.app_context():
+# تابع ایمن برای ساخت دیتابیس
+def init_db():
     try:
-        db.create_all()
-        print("Database tables created/verified successfully.")
+        with app.app_context():
+            db.create_all()
+            print("Database initialized successfully.")
     except Exception as e:
-        print(f"DB Error: {e}")
+        print(f"DB Init Error: {e}")
+
+init_db()
 
 def calculate_discount(count):
     if count >= 50: return "50%", 50
@@ -45,7 +48,7 @@ def calculate_discount(count):
 def home():
     ref = request.args.get("ref", None)
     
-    # ۱. ثبت امتیاز (فقط وقتی ویدیو/صفحه دیده شود)
+    # ثبت بازدید خودکار
     if ref:
         try:
             visitor_id = request.headers.get("User-Agent", "Unknown") + "_" + request.remote_addr
@@ -55,19 +58,25 @@ def home():
                 visit = Visit(code=ref, visitor_id=visitor_id)
                 db.session.add(visit)
                 db.session.commit()
-                print(f"New View (Emtiaz) for code: {ref}")
         except Exception as e:
             print(f"Visit Error: {e}")
     
     safe_ref = escape(ref) if ref else ""
     
-    # طراحی صفحه اول با ویدیوی نوار باریک
     return f"""
     <!DOCTYPE html>
     <html>
     <head>
+        <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-        <title>Cənub Azərbaycan</title>
+        <title>50% Endirim - Novxanı TKD & MMA</title>
+        <meta name="description" content="Bu videonu izləyin! Taekvondo, Kikboksinq və MMA üzrə məşqlərdə 50%-dək endirim qazanın.">
+        <meta property="og:title" content="🥋 50% Endirim - Novxanı TKD & MMA">
+        <meta property="og:description" content="Bu videonu izləyin! Taekvondo, Kikboksinq və MMA üzrə məşqlərdə 50%-dək endirim qazanın.">
+        <meta property="og:type" content="website">
+        <meta property="og:url" content="https://master-babak.onrender.com">
+        <meta property="og:image" content="https://master-babak.onrender.com/static/logo.png">
+        
         <style>
             * {{ box-sizing: border-box; margin: 0; padding: 0; }}
             body {{ font-family: Arial, sans-serif; background: #f8f9fa; color: #333; min-height: 100vh; }}
@@ -76,20 +85,11 @@ def home():
             h1 {{ font-size: 22px; margin-bottom: 4px; }}
             h2 {{ font-size: 15px; color: #555; margin-bottom: 4px; }}
             h3 {{ font-size: 13px; color: #777; margin-bottom: 12px; line-height: 1.4; }}
-            
-            /* ویدیوی نوار باریک */
             video {{ 
-                width: 100%; 
-                height: 140px; 
-                object-fit: contain; 
-                background: #000; 
-                display: block;
-                margin-bottom: 15px;
-                border-radius: 8px;
+                width: 100%; height: 140px; object-fit: contain; background: #000; 
+                display: block; margin-bottom: 15px; border-radius: 8px;
             }}
-
             .promo {{ font-size: 13px; margin-bottom: 15px; line-height: 1.5; background: #fff; padding: 10px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }}
-            
             .btn-main {{ 
                 width: 100%; padding: 18px; font-size: 20px; font-weight: bold;
                 background: #28a745; color: white; border: none; border-radius: 12px;
@@ -104,7 +104,6 @@ def home():
             <h2>TKD / Kickboxing / MMA</h2>
             <h3>Master Babak Vosoghi, 8-ci Dan<br>Novxanı, 0513909912</h3>
             
-            <!-- ویدیوی نوار باریک -->
             <video controls playsinline preload="metadata">
                 <source src="/static/videomaster.mp4" type="video/mp4">
             </video>
@@ -115,7 +114,6 @@ def home():
                 <b>10→10% | 20→20% | 30→30% | 40→40% | 50→50%</b>
             </div>
 
-            <!-- ۲. دکمه دریافت لینک (ثبت زیرمجموعه) -->
             <form action="/getlink" style="width:100%">
                 <input type="hidden" name="parent" value="{safe_ref}">
                 <button type="submit" class="btn-main">🎁 Şəxsi Linkimi Al</button>
@@ -132,14 +130,11 @@ def getlink():
     try:
         mycode = str(uuid.uuid4())[:8]
         
-        # ۳. ثبت زیرمجموعه (فقط وقتی دکمه زده شود)
         if parent and parent != "ROOT":
             new_user = User(code=mycode, parent=parent)
             db.session.add(new_user)
             db.session.commit()
-            print(f"New Subscriber (Zirmajmoe): {mycode} under {parent}")
         
-        # محاسبه امتیاز برای کاربر جدید (هنوز بازدیدی نداشته)
         count = Visit.query.filter_by(code=mycode).count()
         discount, next_level = calculate_discount(count)
         remaining = max(0, next_level - count)
@@ -194,7 +189,7 @@ def getlink():
                     <p>Qalan: <b>{remaining} nəfər</b></p>
                 </div>
 
-                <p class="note">️ Kampaniya hər ay yenilənir.</p>
+                <p class="note">⚠️ Kampaniya hər ay yenilənir.</p>
             </div>
         </body>
         </html>
@@ -204,7 +199,8 @@ def getlink():
         
     except Exception as e:
         print(f"Getlink Error: {traceback.format_exc()}")
-        return "<h1>Xəta baş verdi. Zəhmət olmasa yenidən cəhd edin.</h1>", 500
+        # اگر ارور داد، کاربر را به صفحه اول برگردان instead of showing error
+        return redirect("/")
 
 @app.route("/mylink")
 def mylink():
@@ -319,14 +315,11 @@ def admin():
             <h1>🥋 TKD Dashboard ({total_links} Link)</h1>
             <div class="table-wrap">
             <table>
-                <tr><th>Code</th><th>Parent</th><th>Subs (Zir-majmoe)</th><th>Views (Emtiaz)</th><th>Discount</th></tr>
+                <tr><th>Code</th><th>Parent</th><th>Subs</th><th>Views</th><th>Discount</th></tr>
         """
         
         for user in users:
-            # شمارش زیرمجموعه‌ها (تعداد کسانی که با این کد لینک گرفته‌اند)
             subs_count = User.query.filter_by(parent=user.code).count()
-            
-            # شمارش بازدیدها (تعداد دفعاتی که لینک این کد دیده شده)
             views_count = Visit.query.filter_by(code=user.code).count()
             
             discount, next_level = calculate_discount(views_count)
@@ -365,4 +358,3 @@ def admin():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
-    # FINAL FIX FOR VIDEO AND ERROR HANDLING - v2
