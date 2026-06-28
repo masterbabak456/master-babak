@@ -4,6 +4,7 @@ from markupsafe import escape
 import os
 import re
 from sqlalchemy import func
+import uuid
 
 app = Flask(__name__)
 
@@ -32,14 +33,21 @@ with app.app_context():
     db.create_all()
 
 def normalize_phone(phone):
-    """تبدیل شماره به فرمت استاندارد با صفر اول"""
+    """تبدیل همه شماره‌ها به فرمت استاندارد با 0 اول"""
     if not phone: return ""
+    # حذف همه کاراکترهای غیر عددی
     clean = re.sub(r'[^0-9]', '', phone)
+    
+    # اگر با 994 شروع شد، آن را حذف و 0 بگذار
     if clean.startswith('994'):
         return '0' + clean[3:]
+    
+    # اگر با 0 شروع شد که عالی است
     if clean.startswith('0'):
         return clean
-    return '0' + clean # فرض بر پیش‌شماره آذربایجان
+        
+    # اگر هیچکدام نبود (مثلا 51390...) فرض میکنیم کد کشور ندارد و 0 اضافه میکنیم
+    return '0' + clean
 
 def calculate_discount(count):
     thresholds = [(50, "50%"), (40, "40%"), (30, "30%"), (20, "20%"), (10, "10%")]
@@ -50,10 +58,14 @@ def calculate_discount(count):
 @app.route("/")
 def home():
     ref = request.args.get("ref")
-    visitor_phone = request.args.get("vp") # دریافت شماره فرستنده از لینک
+    # دریافت شماره فرستنده از لینک (vp)
+    visitor_phone = request.args.get("vp") 
     
     if ref and visitor_phone:
+        # نرمالایز کردن شماره بازدیدکننده قبل از ذخیره
         clean_vp = normalize_phone(visitor_phone)
+        
+        # چک کردن تکراری نبودن بازدید
         existing = Visit.query.filter_by(code=ref, visitor_phone=clean_vp).first()
         if not existing:
             db.session.add(Visit(code=ref, visitor_phone=clean_vp))
@@ -88,7 +100,7 @@ def home():
     <form action="/getlink" method="POST">
         <div class="input-group">
             <label>📱 Nömrənizi daxil edin:</label>
-            <input type="tel" name="phone" placeholder="051 390 99 12" required pattern="[0-9 ]{{10,15}}">
+            <input type="tel" name="phone" placeholder="051 390 99 12" required pattern="[0-9 ]{{7,15}}">
         </div>
         <input type="hidden" name="parent" value="{safe_ref}">
         <button type="submit" class="btn-main">Şəxsi Linkimi Al</button>
@@ -99,17 +111,16 @@ def home():
 @app.route("/getlink", methods=["POST"])
 def getlink():
     phone = request.form.get("phone", "").strip()
-    parent = request.form.get("parent", "")
     
-    if not phone or len(phone) < 10:
-        return redirect("/")
+    if not phone: return redirect("/")
         
+    # نرمالایز کردن شماره ورودی
     clean_phone = normalize_phone(phone)
     
+    # جستجو یا ساخت کاربر جدید
     user = Referral.query.filter_by(phone=clean_phone).first()
     
     if not user:
-        import uuid
         new_code = str(uuid.uuid4())[:8]
         user = Referral(phone=clean_phone, code=new_code)
         db.session.add(user)
@@ -120,16 +131,18 @@ def getlink():
     remaining = max(0, next_level - count)
     progress = min(100, (count / next_level) * 100) if next_level > 0 else 0
     
-    # ✅ نکته کلیدی: اضافه کردن vp به لینک اشتراک‌گذاری
-    share_text = f"🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={user.code}&vp={clean_phone.replace('0','994',1)}"
+    # ✅ نکته کلیدی: ارسال شماره با فرمت 051... در لینک واتس‌اپ
+    # این باعث می‌شود زنجیره امتیاز حفظ شود
+    share_link = f"https://master-babak.onrender.com/?ref={user.code}&vp={clean_phone}"
+    share_text = f"🥋 TKD Kampaniyası%0A%0A{share_link}"
     
     return f"""<!DOCTYPE html>
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Linkiniz Hazırdır</title>
     <style>*{{box-sizing:border-box;margin:0;padding:0}}body{{font-family:Arial,sans-serif;background:#fff;color:#333;width:100vw;min-height:100vh;padding:20px;display:flex;flex-direction:column;align-items:center}}.card{{width:100%;max-width:100%;text-align:center}}h1{{font-size:22px;margin-bottom:10px}}h2{{font-size:18px;color:#28a745;margin-bottom:20px}}input{{width:100%;padding:14px;font-size:16px;border:2px solid #eee;border-radius:8px;text-align:center;margin-bottom:20px;background:#f9f9f9}}.btn-wa{{width:100%;padding:16px;font-size:18px;font-weight:bold;background:#25D366;color:white;border:none;border-radius:12px;cursor:pointer;margin-bottom:20px;display:block;text-decoration:none}}.stats{{font-size:14px;color:#666;line-height:1.6}}.progress-bar{{width:100%;height:25px;background:#eee;border-radius:12px;overflow:hidden;margin:10px 0}}.progress-fill{{height:100%;background:#28a745;transition:width 0.3s}}</style>
     </head><body><div class="card"><h1>Şəxsi Linkiniz</h1><h2>Hazırdır!</h2>
-    <input value="https://master-babak.onrender.com/?ref={user.code}" readonly onclick="this.select()">
-    <a href="https://wa.me/?text={share_text}" class="btn-wa">📲 WhatsApp-da Paylaş</a>
+    <input value="{share_link}" readonly onclick="this.select()">
+    <a href="https://wa.me/?text={share_text}" class="btn-wa"> WhatsApp-da Paylaş</a>
     <div class="stats"><p>Dəvət sayı (Baxış): <b>{count}</b></p><p>Endirim: <b>{discount}</b></p>
     <div class="progress-bar"><div class="progress-fill" style="width:{progress}%"></div></div>
     <p>Qalan: <b>{remaining} nəfər</b></p></div></div></body></html>"""
@@ -158,14 +171,15 @@ def mylink():
     remaining = max(0, next_level - count)
     progress = min(100, (count / next_level) * 100) if next_level > 0 else 0
     
-    share_text = f"🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={user.code}&vp={clean_phone.replace('0','994',1)}"
+    share_link = f"https://master-babak.onrender.com/?ref={user.code}&vp={clean_phone}"
+    share_text = f" TKD Kampaniyası%0A%0A{share_link}"
     
     return f"""<!DOCTYPE html>
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Linkim</title>
     <style>*{{box-sizing:border-box;margin:0;padding:0}}body{{font-family:Arial,sans-serif;background:#fff;color:#333;width:100vw;min-height:100vh;padding:20px;display:flex;flex-direction:column;align-items:center}}.card{{width:100%;max-width:100%;text-align:center}}h1{{font-size:22px;margin-bottom:10px}}h2{{font-size:18px;color:#28a745;margin-bottom:20px}}input{{width:100%;padding:14px;font-size:16px;border:2px solid #eee;border-radius:8px;text-align:center;margin-bottom:20px;background:#f9f9f9}}.btn-wa{{width:100%;padding:16px;font-size:18px;font-weight:bold;background:#25D366;color:white;border:none;border-radius:12px;cursor:pointer;margin-bottom:20px;display:block;text-decoration:none}}.stats{{font-size:14px;color:#666;line-height:1.6}}.progress-bar{{width:100%;height:25px;background:#eee;border-radius:12px;overflow:hidden;margin:10px 0}}.progress-fill{{height:100%;background:#28a745;transition:width 0.3s}}</style>
     </head><body><div class="card"><h1>Şəxsi Linkiniz</h1>
-    <input value="https://master-babak.onrender.com/?ref={user.code}" readonly onclick="this.select()">
+    <input value="{share_link}" readonly onclick="this.select()">
     <a href="https://wa.me/?text={share_text}" class="btn-wa">WhatsApp-da Paylaş</a>
     <div class="stats"><p>Dəvət sayı (Baxış): <b>{count}</b></p><p>Endirim: <b>{discount}</b></p>
     <div class="progress-bar"><div class="progress-fill" style="width:{progress}%"></div></div>
