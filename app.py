@@ -1,14 +1,15 @@
-from flask import Flask, request, redirect, make_response, render_template_string
+from flask import Flask, request, redirect, make_response, render_template_string, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from markupsafe import escape
 import os
 import re
+import uuid
 
 app = Flask(__name__)
 
-# تنظیمات دیتابیس (پشتیبانی از PostgreSQL Render)
+# تنظیمات دیتابیس
 db_uri = os.environ.get('DATABASE_URL', 'sqlite:///referrals_new.db')
-if db_uri.startswith("postgres://"):
+if db_uri and db_uri.startswith("postgres://"):
     db_uri = db_uri.replace("postgres://", "postgresql://", 1)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
@@ -17,16 +18,15 @@ ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'babak1234')
 
 db = SQLAlchemy(app)
 
-# جدول جدید: ذخیره شماره موبایل به عنوان شناسه اصلی
 class Referral(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    phone = db.Column(db.String(20), unique=True, nullable=False, index=True) # شماره موبایل یکتا
-    code = db.Column(db.String(20), unique=True, nullable=False, index=True)   # کد لینک
+    phone = db.Column(db.String(20), unique=True, nullable=False, index=True)
+    code = db.Column(db.String(20), unique=True, nullable=False, index=True)
     
 class Visit(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(20), nullable=False, index=True)
-    visitor_phone = db.Column(db.String(20), nullable=False) # شناسه بازدیدکننده بر اساس شماره
+    visitor_id = db.Column(db.String(50), nullable=False, index=True) # شناسه منحصر به فرد بازدیدکننده
 
 with app.app_context():
     db.create_all()
@@ -40,20 +40,8 @@ def calculate_discount(count):
 @app.route("/")
 def home():
     ref = request.args.get("ref")
-    
-    # دریافت شماره بازدیدکننده از پارامتر URL (اگر فرستاده شده باشد)
-    visitor_phone = request.args.get("vp") 
-    
-    if ref and visitor_phone:
-        # بررسی اینکه آیا این شماره قبلاً روی این لینک کلیک کرده؟
-        existing = Visit.query.filter_by(code=ref, visitor_phone=visitor_phone).first()
-        if not existing:
-            db.session.add(Visit(code=ref, visitor_phone=visitor_phone))
-            db.session.commit()
-    
     safe_ref = escape(ref) if ref else ""
     
-    # صفحه اصلی + فرم ورود شماره موبایل
     return f"""
     <!DOCTYPE html>
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -71,23 +59,83 @@ def home():
         .input-group label{{display:block; margin-bottom:5px; font-weight:bold; font-size:14px;}}
         .input-group input{{width:100%; padding:14px; font-size:16px; border:2px solid #ddd; border-radius:10px; direction:ltr; text-align:left;}}
         .btn-main{{width:100%;padding:18px;font-size:20px;font-weight:bold;background:#28a745;color:white;border:none;border-radius:12px;cursor:pointer;box-shadow:0 4px 10px rgba(40,167,69,0.3)}}
+        .hidden{{display:none}}
     </style></head><body><div class="container">
     <img src="/static/logo.png" alt="Logo"><h1>Cənub Azərbaycan</h1>
     <h2>TKD / Kickboxing / MMA</h2>
     <h3>Master Babak Vosoghi, 8-ci Dan<br>Novxanı, 0513909912</h3>
-    <video controls playsinline preload="metadata"><source src="/static/videomaster.mp4" type="video/mp4"></video>
-    <div class="promo"><b>Endirim Kampaniyası</b><br>Şəxsi linkinizi dostlarınıza göndərin.<br><b>10→10% | 20→20% | 30→30% | 40→40% | 50→50%</b></div>
     
-    <!-- فرم جدید: دریافت شماره موبایل -->
-    <form action="/getlink" method="POST">
+    <!-- ویدیو با قابلیت تشخیص پخش -->
+    <video id="mainVideo" controls playsinline preload="metadata">
+        <source src="/static/videomaster.mp4" type="video/mp4">
+    </video>
+
+    <div class="promo"><b>Endirim Kampaniyası</b><br>Videonu izləyin və şəxsi linkinizi alın.<br><b>10→10% | 20→20% | 30→30% | 40→40% | 50→50%</b></div>
+    
+    <form action="/getlink" method="POST" id="regForm">
         <div class="input-group">
-            <label>📱 Nömrənizi daxil edin:</label>
+            <label> Nömrənizi daxil edin:</label>
             <input type="tel" name="phone" placeholder="+994 50 123 45 67" required pattern="[0-9+ ]{{10,15}}">
         </div>
-        <input type="hidden" name="parent" value="{safe_ref}">
+        <input type="hidden" name="parent" value="{safe_ref}" id="parentCode">
         <button type="submit" class="btn-main">Şəxsi Linkimi Al</button>
     </form>
-    </div></body></html>"""
+    </div>
+
+    <script>
+        // تولید شناسه منحصر به فرد برای هر بازدیدکننده (بدون کوکی)
+        let visitorId = localStorage.getItem('tkd_visitor_id');
+        if (!visitorId) {
+            visitorId = 'v_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('tkd_visitor_id', visitorId);
+        }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const refCode = urlParams.get('ref');
+        if (refCode) {
+            localStorage.setItem('tkd_ref_code', refCode);
+            document.getElementById('parentCode').value = refCode;
+        } else {
+            const savedRef = localStorage.getItem('tkd_ref_code');
+            if (savedRef) document.getElementById('parentCode').value = savedRef;
+        }
+
+        // *** بخش اصلی: ثبت امتیاز با دیدن ویدیو ***
+        const video = document.getElementById('mainVideo');
+        let scoreSent = false;
+
+        video.addEventListener('play', function() {
+            if (!scoreSent && refCode) {
+                scoreSent = true;
+                // ارسال درخواست مخفیانه به سرور برای ثبت امتیاز
+                fetch('/track_view', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        code: refCode,
+                        vid: visitorId
+                    })
+                }).then(res => res.json())
+                  .then(data => console.log('View tracked:', data));
+            }
+        });
+    </script>
+    </body></html>"""
+
+# مسیر جدید برای دریافت سیگنال تماشای ویدیو
+@app.route("/track_view", methods=["POST"])
+def track_view():
+    data = request.get_json()
+    code = data.get('code')
+    vid = data.get('vid')
+    
+    if code and vid:
+        existing = Visit.query.filter_by(code=code, visitor_id=vid).first()
+        if not existing:
+            db.session.add(Visit(code=code, visitor_id=vid))
+            db.session.commit()
+            return jsonify({"status": "ok"})
+    return jsonify({"status": "duplicate"})
 
 
 @app.route("/getlink", methods=["POST"])
@@ -95,39 +143,34 @@ def getlink():
     phone = request.form.get("phone", "").strip()
     parent = request.form.get("parent", "")
     
-    # اعتبارسنجی ساده شماره موبایل
     if not phone or len(phone) < 10:
         return redirect("/")
         
-    # پاکسازی شماره (حذف فاصله و +)
     clean_phone = re.sub(r'[^0-9]', '', phone)
     
-    # چک کردن اینکه آیا این شماره قبلاً ثبت شده؟
     user = Referral.query.filter_by(phone=clean_phone).first()
     
     if not user:
-        # ساخت کد جدید بر اساس ۸ رقم آخر شماره (یا رندوم اگر تکراری بود)
-        import uuid
         new_code = str(uuid.uuid4())[:8]
         user = Referral(phone=clean_phone, code=new_code)
         db.session.add(user)
         db.session.commit()
     
+    # محاسبه آمار کاربر فعلی
     count = Visit.query.filter_by(code=user.code).count()
     discount, next_level = calculate_discount(count)
     remaining = max(0, next_level - count)
     progress = min(100, (count / next_level) * 100) if next_level > 0 else 0
     
-    # لینک اشتراک‌گذاری حالا شامل شماره بازدیدکننده هم هست (vp)
-    share_text = f"🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={user.code}&vp={clean_phone}"
+    share_text = f" TKD Kampaniyası%0A%0Ahttps://abak.onrender.com/?ref={user.code}"
     
     return f"""<!DOCTYPE html>
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Linkiniz Hazırdır</title>
     <style>*{{box-sizing:border-box;margin:0;padding:0}}body{{font-family:Arial,sans-serif;background:#fff;color:#333;width:100vw;min-height:100vh;padding:20px;display:flex;flex-direction:column;align-items:center}}.card{{width:100%;max-width:100%;text-align:center}}h1{{font-size:22px;margin-bottom:10px}}h2{{font-size:18px;color:#28a745;margin-bottom:20px}}input{{width:100%;padding:14px;font-size:16px;border:2px solid #eee;border-radius:8px;text-align:center;margin-bottom:20px;background:#f9f9f9}}.btn-wa{{width:100%;padding:16px;font-size:18px;font-weight:bold;background:#25D366;color:white;border:none;border-radius:12px;cursor:pointer;margin-bottom:20px;display:block;text-decoration:none}}.stats{{font-size:14px;color:#666;line-height:1.6}}.progress-bar{{width:100%;height:25px;background:#eee;border-radius:12px;overflow:hidden;margin:10px 0}}.progress-fill{{height:100%;background:#28a745;transition:width 0.3s}}</style>
     </head><body><div class="card"><h1>Şəxsi Linkiniz</h1><h2>Hazırdır!</h2>
-    <input value="https://master-babak.onrender.com/?ref={user.code}" readonly onclick="this.select()">
-    <a href="https://wa.me/?text={share_text}" class="btn-wa">📲 WhatsApp-da Paylaş</a>
+    <input value="https://abak.onrender.com/?ref={user.code}" readonly onclick="this.select()">
+    <a href="https://wa.me/?text={share_text}" class="btn-wa"> WhatsApp-da Paylaş</a>
     <div class="stats"><p>Dəvət sayı (Baxış): <b>{count}</b></p><p>Endirim: <b>{discount}</b></p>
     <div class="progress-bar"><div class="progress-fill" style="width:{progress}%"></div></div>
     <p>Qalan: <b>{remaining} nəfər</b></p></div></div></body></html>"""
@@ -135,7 +178,6 @@ def getlink():
 
 @app.route("/mylink")
 def mylink():
-    # حالا کاربر باید شماره‌اش را وارد کند تا لینکش را ببیند
     phone = request.args.get("phone")
     if not phone:
         return """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
@@ -157,14 +199,14 @@ def mylink():
     remaining = max(0, next_level - count)
     progress = min(100, (count / next_level) * 100) if next_level > 0 else 0
     
-    share_text = f"🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={user.code}&vp={clean_phone}"
+    share_text = f" TKD Kampaniyası%0A%0Ahttps://abak.onrender.com/?ref={user.code}"
     
     return f"""<!DOCTYPE html>
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Linkim</title>
     <style>*{{box-sizing:border-box;margin:0;padding:0}}body{{font-family:Arial,sans-serif;background:#fff;color:#333;width:100vw;min-height:100vh;padding:20px;display:flex;flex-direction:column;align-items:center}}.card{{width:100%;max-width:100%;text-align:center}}h1{{font-size:22px;margin-bottom:10px}}h2{{font-size:18px;color:#28a745;margin-bottom:20px}}input{{width:100%;padding:14px;font-size:16px;border:2px solid #eee;border-radius:8px;text-align:center;margin-bottom:20px;background:#f9f9f9}}.btn-wa{{width:100%;padding:16px;font-size:18px;font-weight:bold;background:#25D366;color:white;border:none;border-radius:12px;cursor:pointer;margin-bottom:20px;display:block;text-decoration:none}}.stats{{font-size:14px;color:#666;line-height:1.6}}.progress-bar{{width:100%;height:25px;background:#eee;border-radius:12px;overflow:hidden;margin:10px 0}}.progress-fill{{height:100%;background:#28a745;transition:width 0.3s}}</style>
     </head><body><div class="card"><h1>Şəxsi Linkiniz</h1>
-    <input value="https://master-babak.onrender.com/?ref={user.code}" readonly onclick="this.select()">
+    <input value="https://abak.onrender.com/?ref={user.code}" readonly onclick="this.select()">
     <a href="https://wa.me/?text={share_text}" class="btn-wa">WhatsApp-da Paylaş</a>
     <div class="stats"><p>Dəvət sayı (Baxış): <b>{count}</b></p><p>Endirim: <b>{discount}</b></p>
     <div class="progress-bar"><div class="progress-fill" style="width:{progress}%"></div></div>
