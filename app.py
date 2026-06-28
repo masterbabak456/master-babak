@@ -1,15 +1,13 @@
-from flask import Flask, request, redirect, make_response
+from flask import Flask, request, redirect, make_response, render_template_string
 from flask_sqlalchemy import SQLAlchemy
 from markupsafe import escape
 import os
 import re
-from sqlalchemy import func
-import uuid
 
 app = Flask(__name__)
 
-# تنظیمات دیتابیس
-db_uri = os.environ.get('DATABASE_URL', 'sqlite:///referrals.db')
+# تنظیمات دیتابیس (پشتیبانی از PostgreSQL Render)
+db_uri = os.environ.get('DATABASE_URL', 'sqlite:///referrals_new.db')
 if db_uri.startswith("postgres://"):
     db_uri = db_uri.replace("postgres://", "postgresql://", 1)
 
@@ -19,35 +17,19 @@ ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'babak1234')
 
 db = SQLAlchemy(app)
 
+# جدول جدید: ذخیره شماره موبایل به عنوان شناسه اصلی
 class Referral(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    phone = db.Column(db.String(20), unique=True, nullable=False, index=True)
-    code = db.Column(db.String(20), unique=True, nullable=False, index=True)
+    phone = db.Column(db.String(20), unique=True, nullable=False, index=True) # شماره موبایل یکتا
+    code = db.Column(db.String(20), unique=True, nullable=False, index=True)   # کد لینک
     
 class Visit(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(20), nullable=False, index=True)
-    visitor_phone = db.Column(db.String(20), nullable=False) 
+    visitor_phone = db.Column(db.String(20), nullable=False) # شناسه بازدیدکننده بر اساس شماره
 
 with app.app_context():
     db.create_all()
-
-def normalize_phone(phone):
-    """تبدیل همه شماره‌ها به فرمت استاندارد با 0 اول"""
-    if not phone: return ""
-    # حذف همه کاراکترهای غیر عددی
-    clean = re.sub(r'[^0-9]', '', phone)
-    
-    # اگر با 994 شروع شد، آن را حذف و 0 بگذار
-    if clean.startswith('994'):
-        return '0' + clean[3:]
-    
-    # اگر با 0 شروع شد که عالی است
-    if clean.startswith('0'):
-        return clean
-        
-    # اگر هیچکدام نبود (مثلا 51390...) فرض میکنیم کد کشور ندارد و 0 اضافه میکنیم
-    return '0' + clean
 
 def calculate_discount(count):
     thresholds = [(50, "50%"), (40, "40%"), (30, "30%"), (20, "20%"), (10, "10%")]
@@ -58,21 +40,20 @@ def calculate_discount(count):
 @app.route("/")
 def home():
     ref = request.args.get("ref")
-    # دریافت شماره فرستنده از لینک (vp)
+    
+    # دریافت شماره بازدیدکننده از پارامتر URL (اگر فرستاده شده باشد)
     visitor_phone = request.args.get("vp") 
     
     if ref and visitor_phone:
-        # نرمالایز کردن شماره بازدیدکننده قبل از ذخیره
-        clean_vp = normalize_phone(visitor_phone)
-        
-        # چک کردن تکراری نبودن بازدید
-        existing = Visit.query.filter_by(code=ref, visitor_phone=clean_vp).first()
+        # بررسی اینکه آیا این شماره قبلاً روی این لینک کلیک کرده؟
+        existing = Visit.query.filter_by(code=ref, visitor_phone=visitor_phone).first()
         if not existing:
-            db.session.add(Visit(code=ref, visitor_phone=clean_vp))
+            db.session.add(Visit(code=ref, visitor_phone=visitor_phone))
             db.session.commit()
     
     safe_ref = escape(ref) if ref else ""
     
+    # صفحه اصلی + فرم ورود شماره موبایل
     return f"""
     <!DOCTYPE html>
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -97,10 +78,11 @@ def home():
     <video controls playsinline preload="metadata"><source src="/static/videomaster.mp4" type="video/mp4"></video>
     <div class="promo"><b>Endirim Kampaniyası</b><br>Şəxsi linkinizi dostlarınıza göndərin.<br><b>10→10% | 20→20% | 30→30% | 40→40% | 50→50%</b></div>
     
+    <!-- فرم جدید: دریافت شماره موبایل -->
     <form action="/getlink" method="POST">
         <div class="input-group">
             <label>📱 Nömrənizi daxil edin:</label>
-            <input type="tel" name="phone" placeholder="051 390 99 12" required pattern="[0-9 ]{{7,15}}">
+            <input type="tel" name="phone" placeholder="+994 50 123 45 67" required pattern="[0-9+ ]{{10,15}}">
         </div>
         <input type="hidden" name="parent" value="{safe_ref}">
         <button type="submit" class="btn-main">Şəxsi Linkimi Al</button>
@@ -111,16 +93,21 @@ def home():
 @app.route("/getlink", methods=["POST"])
 def getlink():
     phone = request.form.get("phone", "").strip()
+    parent = request.form.get("parent", "")
     
-    if not phone: return redirect("/")
+    # اعتبارسنجی ساده شماره موبایل
+    if not phone or len(phone) < 10:
+        return redirect("/")
         
-    # نرمالایز کردن شماره ورودی
-    clean_phone = normalize_phone(phone)
+    # پاکسازی شماره (حذف فاصله و +)
+    clean_phone = re.sub(r'[^0-9]', '', phone)
     
-    # جستجو یا ساخت کاربر جدید
+    # چک کردن اینکه آیا این شماره قبلاً ثبت شده؟
     user = Referral.query.filter_by(phone=clean_phone).first()
     
     if not user:
+        # ساخت کد جدید بر اساس ۸ رقم آخر شماره (یا رندوم اگر تکراری بود)
+        import uuid
         new_code = str(uuid.uuid4())[:8]
         user = Referral(phone=clean_phone, code=new_code)
         db.session.add(user)
@@ -131,18 +118,16 @@ def getlink():
     remaining = max(0, next_level - count)
     progress = min(100, (count / next_level) * 100) if next_level > 0 else 0
     
-    # ✅ نکته کلیدی: ارسال شماره با فرمت 051... در لینک واتس‌اپ
-    # این باعث می‌شود زنجیره امتیاز حفظ شود
-    share_link = f"https://master-babak.onrender.com/?ref={user.code}&vp={clean_phone}"
-    share_text = f"🥋 TKD Kampaniyası%0A%0A{share_link}"
+    # لینک اشتراک‌گذاری حالا شامل شماره بازدیدکننده هم هست (vp)
+    share_text = f"🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={user.code}&vp={clean_phone}"
     
     return f"""<!DOCTYPE html>
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Linkiniz Hazırdır</title>
     <style>*{{box-sizing:border-box;margin:0;padding:0}}body{{font-family:Arial,sans-serif;background:#fff;color:#333;width:100vw;min-height:100vh;padding:20px;display:flex;flex-direction:column;align-items:center}}.card{{width:100%;max-width:100%;text-align:center}}h1{{font-size:22px;margin-bottom:10px}}h2{{font-size:18px;color:#28a745;margin-bottom:20px}}input{{width:100%;padding:14px;font-size:16px;border:2px solid #eee;border-radius:8px;text-align:center;margin-bottom:20px;background:#f9f9f9}}.btn-wa{{width:100%;padding:16px;font-size:18px;font-weight:bold;background:#25D366;color:white;border:none;border-radius:12px;cursor:pointer;margin-bottom:20px;display:block;text-decoration:none}}.stats{{font-size:14px;color:#666;line-height:1.6}}.progress-bar{{width:100%;height:25px;background:#eee;border-radius:12px;overflow:hidden;margin:10px 0}}.progress-fill{{height:100%;background:#28a745;transition:width 0.3s}}</style>
     </head><body><div class="card"><h1>Şəxsi Linkiniz</h1><h2>Hazırdır!</h2>
-    <input value="{share_link}" readonly onclick="this.select()">
-    <a href="https://wa.me/?text={share_text}" class="btn-wa"> WhatsApp-da Paylaş</a>
+    <input value="https://master-babak.onrender.com/?ref={user.code}" readonly onclick="this.select()">
+    <a href="https://wa.me/?text={share_text}" class="btn-wa">📲 WhatsApp-da Paylaş</a>
     <div class="stats"><p>Dəvət sayı (Baxış): <b>{count}</b></p><p>Endirim: <b>{discount}</b></p>
     <div class="progress-bar"><div class="progress-fill" style="width:{progress}%"></div></div>
     <p>Qalan: <b>{remaining} nəfər</b></p></div></div></body></html>"""
@@ -150,17 +135,18 @@ def getlink():
 
 @app.route("/mylink")
 def mylink():
+    # حالا کاربر باید شماره‌اش را وارد کند تا لینکش را ببیند
     phone = request.args.get("phone")
     if not phone:
         return """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
         <body style="font-family:Arial;display:flex;justify-content:center;align-items:center;height:100vh;">
         <form action="/mylink" method="get" style="text-align:center;padding:20px;border:1px solid #ddd;border-radius:10px;">
         <h2>Linkinizi görmək üçün nömrənizi yazın</h2>
-        <input type="tel" name="phone" placeholder="051..." required style="padding:10px;margin:10px 0;width:100%;">
+        <input type="tel" name="phone" placeholder="+994..." required style="padding:10px;margin:10px 0;width:100%;">
         <button type="submit" style="padding:10px 20px;background:#28a745;color:white;border:none;border-radius:5px;">Axtar</button>
         </form></body></html>"""
         
-    clean_phone = normalize_phone(phone)
+    clean_phone = re.sub(r'[^0-9]', '', phone)
     user = Referral.query.filter_by(phone=clean_phone).first()
     
     if not user:
@@ -171,15 +157,14 @@ def mylink():
     remaining = max(0, next_level - count)
     progress = min(100, (count / next_level) * 100) if next_level > 0 else 0
     
-    share_link = f"https://master-babak.onrender.com/?ref={user.code}&vp={clean_phone}"
-    share_text = f" TKD Kampaniyası%0A%0A{share_link}"
+    share_text = f"🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={user.code}&vp={clean_phone}"
     
     return f"""<!DOCTYPE html>
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Linkim</title>
     <style>*{{box-sizing:border-box;margin:0;padding:0}}body{{font-family:Arial,sans-serif;background:#fff;color:#333;width:100vw;min-height:100vh;padding:20px;display:flex;flex-direction:column;align-items:center}}.card{{width:100%;max-width:100%;text-align:center}}h1{{font-size:22px;margin-bottom:10px}}h2{{font-size:18px;color:#28a745;margin-bottom:20px}}input{{width:100%;padding:14px;font-size:16px;border:2px solid #eee;border-radius:8px;text-align:center;margin-bottom:20px;background:#f9f9f9}}.btn-wa{{width:100%;padding:16px;font-size:18px;font-weight:bold;background:#25D366;color:white;border:none;border-radius:12px;cursor:pointer;margin-bottom:20px;display:block;text-decoration:none}}.stats{{font-size:14px;color:#666;line-height:1.6}}.progress-bar{{width:100%;height:25px;background:#eee;border-radius:12px;overflow:hidden;margin:10px 0}}.progress-fill{{height:100%;background:#28a745;transition:width 0.3s}}</style>
     </head><body><div class="card"><h1>Şəxsi Linkiniz</h1>
-    <input value="{share_link}" readonly onclick="this.select()">
+    <input value="https://master-babak.onrender.com/?ref={user.code}" readonly onclick="this.select()">
     <a href="https://wa.me/?text={share_text}" class="btn-wa">WhatsApp-da Paylaş</a>
     <div class="stats"><p>Dəvət sayı (Baxış): <b>{count}</b></p><p>Endirim: <b>{discount}</b></p>
     <div class="progress-bar"><div class="progress-fill" style="width:{progress}%"></div></div>
@@ -200,6 +185,7 @@ def admin():
         <button type="submit" style="padding:12px;font-size:16px;background:#28a745;color:white;border:none;border-radius:5px;cursor:pointer;width:100%;">Daxil ol</button>
         </form></div></body></html>"""
 
+    from sqlalchemy import func
     results = db.session.query(Referral.phone, Referral.code, func.count(Visit.id).label('view_count')).outerjoin(Visit, Referral.code == Visit.code).group_by(Referral.id).all()
     total_links = len(results)
     
@@ -225,5 +211,5 @@ def admin():
     return response
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
