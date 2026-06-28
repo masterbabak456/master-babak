@@ -1,13 +1,14 @@
-from flask import Flask, request, redirect, make_response, render_template_string
+from flask import Flask, request, redirect, make_response
 from flask_sqlalchemy import SQLAlchemy
 from markupsafe import escape
 import os
 import re
+from sqlalchemy import func
 
 app = Flask(__name__)
 
-# تنظیمات دیتابیس (پشتیبانی از PostgreSQL Render)
-db_uri = os.environ.get('DATABASE_URL', 'sqlite:///referrals_new.db')
+# تنظیمات دیتابیس
+db_uri = os.environ.get('DATABASE_URL', 'sqlite:///referrals.db')
 if db_uri.startswith("postgres://"):
     db_uri = db_uri.replace("postgres://", "postgresql://", 1)
 
@@ -17,19 +18,28 @@ ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'babak1234')
 
 db = SQLAlchemy(app)
 
-# جدول جدید: ذخیره شماره موبایل به عنوان شناسه اصلی
 class Referral(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    phone = db.Column(db.String(20), unique=True, nullable=False, index=True) # شماره موبایل یکتا
-    code = db.Column(db.String(20), unique=True, nullable=False, index=True)   # کد لینک
+    phone = db.Column(db.String(20), unique=True, nullable=False, index=True)
+    code = db.Column(db.String(20), unique=True, nullable=False, index=True)
     
 class Visit(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(20), nullable=False, index=True)
-    visitor_phone = db.Column(db.String(20), nullable=False) # شناسه بازدیدکننده بر اساس شماره
+    visitor_phone = db.Column(db.String(20), nullable=False) 
 
 with app.app_context():
     db.create_all()
+
+def normalize_phone(phone):
+    """تبدیل شماره به فرمت استاندارد با صفر اول"""
+    if not phone: return ""
+    clean = re.sub(r'[^0-9]', '', phone)
+    if clean.startswith('994'):
+        return '0' + clean[3:]
+    if clean.startswith('0'):
+        return clean
+    return '0' + clean # فرض بر پیش‌شماره آذربایجان
 
 def calculate_discount(count):
     thresholds = [(50, "50%"), (40, "40%"), (30, "30%"), (20, "20%"), (10, "10%")]
@@ -40,20 +50,17 @@ def calculate_discount(count):
 @app.route("/")
 def home():
     ref = request.args.get("ref")
-    
-    # دریافت شماره بازدیدکننده از پارامتر URL (اگر فرستاده شده باشد)
-    visitor_phone = request.args.get("vp") 
+    visitor_phone = request.args.get("vp") # دریافت شماره فرستنده از لینک
     
     if ref and visitor_phone:
-        # بررسی اینکه آیا این شماره قبلاً روی این لینک کلیک کرده؟
-        existing = Visit.query.filter_by(code=ref, visitor_phone=visitor_phone).first()
+        clean_vp = normalize_phone(visitor_phone)
+        existing = Visit.query.filter_by(code=ref, visitor_phone=clean_vp).first()
         if not existing:
-            db.session.add(Visit(code=ref, visitor_phone=visitor_phone))
+            db.session.add(Visit(code=ref, visitor_phone=clean_vp))
             db.session.commit()
     
     safe_ref = escape(ref) if ref else ""
     
-    # صفحه اصلی + فرم ورود شماره موبایل
     return f"""
     <!DOCTYPE html>
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -78,11 +85,10 @@ def home():
     <video controls playsinline preload="metadata"><source src="/static/videomaster.mp4" type="video/mp4"></video>
     <div class="promo"><b>Endirim Kampaniyası</b><br>Şəxsi linkinizi dostlarınıza göndərin.<br><b>10→10% | 20→20% | 30→30% | 40→40% | 50→50%</b></div>
     
-    <!-- فرم جدید: دریافت شماره موبایل -->
     <form action="/getlink" method="POST">
         <div class="input-group">
             <label>📱 Nömrənizi daxil edin:</label>
-            <input type="tel" name="phone" placeholder="+994 50 123 45 67" required pattern="[0-9+ ]{{10,15}}">
+            <input type="tel" name="phone" placeholder="051 390 99 12" required pattern="[0-9 ]{{10,15}}">
         </div>
         <input type="hidden" name="parent" value="{safe_ref}">
         <button type="submit" class="btn-main">Şəxsi Linkimi Al</button>
@@ -95,18 +101,14 @@ def getlink():
     phone = request.form.get("phone", "").strip()
     parent = request.form.get("parent", "")
     
-    # اعتبارسنجی ساده شماره موبایل
     if not phone or len(phone) < 10:
         return redirect("/")
         
-    # پاکسازی شماره (حذف فاصله و +)
-    clean_phone = re.sub(r'[^0-9]', '', phone)
+    clean_phone = normalize_phone(phone)
     
-    # چک کردن اینکه آیا این شماره قبلاً ثبت شده؟
     user = Referral.query.filter_by(phone=clean_phone).first()
     
     if not user:
-        # ساخت کد جدید بر اساس ۸ رقم آخر شماره (یا رندوم اگر تکراری بود)
         import uuid
         new_code = str(uuid.uuid4())[:8]
         user = Referral(phone=clean_phone, code=new_code)
@@ -118,8 +120,8 @@ def getlink():
     remaining = max(0, next_level - count)
     progress = min(100, (count / next_level) * 100) if next_level > 0 else 0
     
-    # لینک اشتراک‌گذاری حالا شامل شماره بازدیدکننده هم هست (vp)
-    share_text = f"🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={user.code}&vp={clean_phone}"
+    # ✅ نکته کلیدی: اضافه کردن vp به لینک اشتراک‌گذاری
+    share_text = f"🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={user.code}&vp={clean_phone.replace('0','994',1)}"
     
     return f"""<!DOCTYPE html>
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -135,18 +137,17 @@ def getlink():
 
 @app.route("/mylink")
 def mylink():
-    # حالا کاربر باید شماره‌اش را وارد کند تا لینکش را ببیند
     phone = request.args.get("phone")
     if not phone:
         return """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
         <body style="font-family:Arial;display:flex;justify-content:center;align-items:center;height:100vh;">
         <form action="/mylink" method="get" style="text-align:center;padding:20px;border:1px solid #ddd;border-radius:10px;">
         <h2>Linkinizi görmək üçün nömrənizi yazın</h2>
-        <input type="tel" name="phone" placeholder="+994..." required style="padding:10px;margin:10px 0;width:100%;">
+        <input type="tel" name="phone" placeholder="051..." required style="padding:10px;margin:10px 0;width:100%;">
         <button type="submit" style="padding:10px 20px;background:#28a745;color:white;border:none;border-radius:5px;">Axtar</button>
         </form></body></html>"""
         
-    clean_phone = re.sub(r'[^0-9]', '', phone)
+    clean_phone = normalize_phone(phone)
     user = Referral.query.filter_by(phone=clean_phone).first()
     
     if not user:
@@ -157,7 +158,7 @@ def mylink():
     remaining = max(0, next_level - count)
     progress = min(100, (count / next_level) * 100) if next_level > 0 else 0
     
-    share_text = f"🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={user.code}&vp={clean_phone}"
+    share_text = f"🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={user.code}&vp={clean_phone.replace('0','994',1)}"
     
     return f"""<!DOCTYPE html>
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -185,7 +186,6 @@ def admin():
         <button type="submit" style="padding:12px;font-size:16px;background:#28a745;color:white;border:none;border-radius:5px;cursor:pointer;width:100%;">Daxil ol</button>
         </form></div></body></html>"""
 
-    from sqlalchemy import func
     results = db.session.query(Referral.phone, Referral.code, func.count(Visit.id).label('view_count')).outerjoin(Visit, Referral.code == Visit.code).group_by(Referral.id).all()
     total_links = len(results)
     
@@ -211,5 +211,5 @@ def admin():
     return response
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port, debug=False)
