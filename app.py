@@ -25,8 +25,8 @@ class Referral(db.Model):
     
 class Visit(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    code = db.Column(db.String(20), nullable=False, index=True) # کد صاحب لینک
-    visitor_id = db.Column(db.String(50), nullable=False, index=True) # شناسه دستگاه بازدیدکننده
+    code = db.Column(db.String(20), nullable=False, index=True)
+    visitor_id = db.Column(db.String(50), nullable=False, index=True)
 
 with app.app_context():
     db.create_all()
@@ -53,7 +53,9 @@ def home():
         img{{width:140px;height:auto;margin-bottom:8px}}
         h1{{font-size:22px;margin-bottom:4px}}h2{{font-size:15px;color:#555;margin-bottom:4px}}
         h3{{font-size:13px;color:#777;margin-bottom:12px;line-height:1.4}}
-        video{{width:100%;height:140px;object-fit:cover;border-radius:10px;margin-bottom:15px;background:#000;display:block}}
+        .video-wrapper {{ position: relative; margin-bottom: 15px; }}
+        video{{width:100%;height:140px;object-fit:cover;border-radius:10px;background:#000;display:block}}
+        #trackStatus {{ position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.7); color: white; padding: 5px 10px; border-radius: 5px; font-size: 12px; display: none; }}
         .promo{{font-size:13px;margin-bottom:15px;line-height:1.5;background:#fff;padding:10px;border-radius:8px;box-shadow:0 2px 5px rgba(0,0,0,0.05)}}
         .input-group{{margin: 20px 0; text-align: right;}}
         .input-group label{{display:block; margin-bottom:5px; font-weight:bold; font-size:14px;}}
@@ -64,9 +66,12 @@ def home():
     <h2>TKD / Kickboxing / MMA</h2>
     <h3>Master Babak Vosoghi, 8-ci Dan<br>Novxanı, 0513909912</h3>
     
-    <video id="mainVideo" controls playsinline preload="metadata">
-        <source src="/static/videomaster.mp4" type="video/mp4">
-    </video>
+    <div class="video-wrapper">
+        <div id="trackStatus"></div>
+        <video id="mainVideo" controls playsinline preload="metadata">
+            <source src="/static/videomaster.mp4" type="video/mp4">
+        </video>
+    </div>
 
     <div class="promo"><b>Endirim Kampaniyası</b><br>Videonu izləyin və şəxsi linkinizi alın.<br><b>10→10% | 20→20% | 30→30% | 40→40% | 50→50%</b></div>
     
@@ -81,7 +86,6 @@ def home():
     </div>
 
     <script>
-        // ساخت شناسه منحصر به فرد برای دستگاه بازدیدکننده
         let vid = localStorage.getItem('tkd_vid');
         if (!vid) {
             vid = 'dev_' + Math.random().toString(36).substr(2, 9);
@@ -98,17 +102,34 @@ def home():
             if (savedRef) document.getElementById('parentCode').value = savedRef;
         }
 
-        // *** ثبت امتیاز واقعی هنگام پخش ویدیو ***
         const video = document.getElementById('mainVideo');
+        const statusBox = document.getElementById('trackStatus');
         let tracked = false;
 
         video.addEventListener('play', function() {
             if (!tracked && refCode) {
                 tracked = true;
+                statusBox.style.display = 'block';
+                statusBox.innerText = '⏳ Qeyd olunur...';
+                
                 fetch('/track_view', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({code: refCode, vid: vid})
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if(data.status === 'ok') {
+                        statusBox.innerText = '✅ Baxış qeydə alındı!';
+                        statusBox.style.background = 'rgba(40,167,69,0.9)';
+                    } else {
+                        statusBox.innerText = 'ℹ️ Artıq qeyd olunub';
+                        statusBox.style.background = 'rgba(108,117,125,0.9)';
+                    }
+                })
+                .catch(err => {
+                    statusBox.innerText = ' Xəta! İnterneti yoxla';
+                    statusBox.style.background = 'rgba(220,53,69,0.9)';
                 });
             }
         });
@@ -122,7 +143,6 @@ def track_view():
     vid = data.get('vid')
     
     if code and vid:
-        # چک کردن تکراری نبودن بازدید از همین دستگاه
         existing = Visit.query.filter_by(code=code, visitor_id=vid).first()
         if not existing:
             db.session.add(Visit(code=code, visitor_id=vid))
