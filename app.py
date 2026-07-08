@@ -59,47 +59,48 @@ def home():
         .input-group label{{display:block; margin-bottom:5px; font-weight:bold; font-size:14px;}}
         .input-group input{{width:100%; padding:14px; font-size:16px; border:2px solid #ddd; border-radius:10px; direction:ltr; text-align:left;}}
         .btn-main{{width:100%;padding:18px;font-size:20px;font-weight:bold;background:#28a745;color:white;border:none;border-radius:12px;cursor:pointer;box-shadow:0 4px 10px rgba(40,167,69,0.3)}}
-        #debugBar {{ position: fixed; bottom: 0; left: 0; right: 0; background: #222; color: #0f0; padding: 10px; font-size: 12px; font-family: monospace; z-index: 9999; word-break: break-all; }}
-    </style></head><body><div class="container">
-    <img src="/static/logo.png" alt="Logo"><h1>Cənub Azərbaycan</h1>
-    <h2>TKD / Kickboxing / MMA</h2>
-    <h3>Master Babak Vosoghi, 8-ci Dan<br>Novxanı, 0513909912</h3>
+        #debugOverlay {{ position: fixed; top: 0; left: 0; right: 0; background: rgba(0,0,0,0.9); color: #0f0; padding: 15px; font-size: 14px; font-family: monospace; z-index: 99999; word-break: break-all; max-height: 40vh; overflow-y: auto; }}
+    </style></head><body>
     
-    <div class="video-wrapper">
-        <div id="trackStatus"></div>
-        <video id="mainVideo" controls playsinline preload="metadata">
-            <source src="/static/videomaster.mp4" type="video/mp4">
-        </video>
-    </div>
+    <div id="debugOverlay">System ready. Waiting for video play...</div>
 
-    <div class="promo"><b>Endirim Kampaniyası</b><br>Videonu izləyin və şəxsi linkinizi alın.<br><b>10→10% | 20→20% | 30→30% | 40→40% | 50→50%</b></div>
-    
-    <form action="/getlink" method="POST" id="regForm">
-        <div class="input-group">
-            <label> Nömrənizi daxil edin:</label>
-            <input type="tel" name="phone" placeholder="+994 50 123 45 67" required pattern="[0-9+ ]{{10,15}}">
+    <div class="container">
+        <img src="/static/logo.png" alt="Logo"><h1>Cənub Azərbaycan</h1>
+        <h2>TKD / Kickboxing / MMA</h2>
+        <h3>Master Babak Vosoghi, 8-ci Dan<br>Novxanı, 0513909912</h3>
+        
+        <div class="video-wrapper">
+            <div id="trackStatus"></div>
+            <video id="mainVideo" controls playsinline preload="metadata">
+                <source src="/static/videomaster.mp4" type="video/mp4">
+            </video>
         </div>
-        <input type="hidden" name="parent" value="{safe_ref}" id="parentCode">
-        <button type="submit" class="btn-main">Şəxsi Linkimi Al</button>
-    </form>
-    </div>
 
-    <div id="debugBar">System initializing...</div>
+        <div class="promo"><b>Endirim Kampaniyası</b><br>Videonu izləyin və şəxsi linkinizi alın.<br><b>10→10% | 20→20% | 30→30% | 40→40% | 50→50%</b></div>
+        
+        <form action="/getlink" method="POST" id="regForm">
+            <div class="input-group">
+                <label>📱 Nömrənizi daxil edin:</label>
+                <input type="tel" name="phone" placeholder="+994 50 123 45 67" required pattern="[0-9+ ]{{10,15}}">
+            </div>
+            <input type="hidden" name="parent" value="{safe_ref}" id="parentCode">
+            <button type="submit" class="btn-main">Şəxsi Linkimi Al</button>
+        </form>
+    </div>
 
     <script>
-        const debugBar = document.getElementById('debugBar');
-        
-        // 1. ساخت شناسه منحصر به فرد برای دستگاه
+        const debug = document.getElementById('debugOverlay');
+        const log = (msg) => { debug.innerText += '\\n> ' + msg; console.log(msg); };
+
         let vid = localStorage.getItem('tkd_vid');
         if (!vid) {
             vid = 'dev_' + Math.random().toString(36).substr(2, 9);
             localStorage.setItem('tkd_vid', vid);
         }
+        log('Visitor ID: ' + vid);
 
-        // 2. مدیریت کد ارجاع (Ref Code)
         const urlParams = new URLSearchParams(window.location.search);
         let refCode = urlParams.get('ref');
-        
         if (refCode) {
             localStorage.setItem('tkd_ref', refCode);
             document.getElementById('parentCode').value = refCode;
@@ -107,20 +108,19 @@ def home():
             refCode = localStorage.getItem('tkd_ref');
             if (refCode) document.getElementById('parentCode').value = refCode;
         }
+        log('Ref Code: ' + (refCode || 'NONE'));
 
-        debugBar.innerText = 'REF: ' + (refCode || 'NONE') + ' | VID: ' + vid;
-
-        // 3. ثبت امتیاز هنگام پخش ویدیو
         const video = document.getElementById('mainVideo');
         const statusBox = document.getElementById('trackStatus');
         let tracked = false;
 
         video.addEventListener('play', function() {
+            log('PLAY event triggered!');
             if (!tracked && refCode) {
                 tracked = true;
                 statusBox.style.display = 'block';
                 statusBox.innerText = '⏳ Göndərilir...';
-                debugBar.innerText += ' | Sending...';
+                log('Sending POST to /track_view...');
                 
                 fetch('/track_view', {
                     method: 'POST',
@@ -128,11 +128,11 @@ def home():
                     body: JSON.stringify({code: refCode, vid: vid})
                 })
                 .then(res => {
-                    debugBar.innerText += ' | Status: ' + res.status;
+                    log('HTTP Status: ' + res.status);
                     return res.json();
                 })
                 .then(data => {
-                    debugBar.innerText += ' | Response: ' + JSON.stringify(data);
+                    log('Server Response: ' + JSON.stringify(data));
                     if(data.status === 'ok') {
                         statusBox.innerText = '✅ Qeyd olundu!';
                         statusBox.style.background = 'rgba(40,167,69,0.95)';
@@ -143,13 +143,15 @@ def home():
                     }
                 })
                 .catch(err => {
-                    debugBar.innerText += ' | ERROR: ' + err;
+                    log('FETCH ERROR: ' + err.toString());
                     statusBox.innerText = '❌ Xəta!';
                     statusBox.style.background = 'rgba(220,53,69,0.95)';
                     alert('XƏTA! İnterneti yoxla.');
                 });
             } else if (!refCode) {
-                debugBar.innerText += ' | NO REF CODE FOUND';
+                log('ERROR: No ref code found!');
+            } else {
+                log('Already tracked in this session.');
             }
         });
     </script>
@@ -193,14 +195,14 @@ def getlink():
     remaining = max(0, next_level - count)
     progress = min(100, (count / next_level) * 100) if next_level > 0 else 0
     
-    share_text = f"🥋 TKD Kampaniyası%0A%0Ahttps://abak.onrender.com/?ref={user.code}"
+    share_text = f"🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={user.code}"
     
     return f"""<!DOCTYPE html>
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Linkiniz Hazırdır</title>
     <style>*{{box-sizing:border-box;margin:0;padding:0}}body{{font-family:Arial,sans-serif;background:#fff;color:#333;width:100vw;min-height:100vh;padding:20px;display:flex;flex-direction:column;align-items:center}}.card{{width:100%;max-width:100%;text-align:center}}h1{{font-size:22px;margin-bottom:10px}}h2{{font-size:18px;color:#28a745;margin-bottom:20px}}input{{width:100%;padding:14px;font-size:16px;border:2px solid #eee;border-radius:8px;text-align:center;margin-bottom:20px;background:#f9f9f9}}.btn-wa{{width:100%;padding:16px;font-size:18px;font-weight:bold;background:#25D366;color:white;border:none;border-radius:12px;cursor:pointer;margin-bottom:20px;display:block;text-decoration:none}}.stats{{font-size:14px;color:#666;line-height:1.6}}.progress-bar{{width:100%;height:25px;background:#eee;border-radius:12px;overflow:hidden;margin:10px 0}}.progress-fill{{height:100%;background:#28a745;transition:width 0.3s}}</style>
     </head><body><div class="card"><h1>Şəxsi Linkiniz</h1><h2>Hazırdır!</h2>
-    <input value="https://abak.onrender.com/?ref={user.code}" readonly onclick="this.select()">
+    <input value="https://master-babak.onrender.com/?ref={user.code}" readonly onclick="this.select()">
     <a href="https://wa.me/?text={share_text}" class="btn-wa">📲 WhatsApp-da Paylaş</a>
     <div class="stats"><p>Dəvət sayı (Baxış): <b>{count}</b></p><p>Endirim: <b>{discount}</b></p>
     <div class="progress-bar"><div class="progress-fill" style="width:{progress}%"></div></div>
@@ -230,14 +232,14 @@ def mylink():
     remaining = max(0, next_level - count)
     progress = min(100, (count / next_level) * 100) if next_level > 0 else 0
     
-    share_text = f"🥋 TKD Kampaniyası%0A%0Ahttps://abak.onrender.com/?ref={user.code}"
+    share_text = f"🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={user.code}"
     
     return f"""<!DOCTYPE html>
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Linkim</title>
     <style>*{{box-sizing:border-box;margin:0;padding:0}}body{{font-family:Arial,sans-serif;background:#fff;color:#333;width:100vw;min-height:100vh;padding:20px;display:flex;flex-direction:column;align-items:center}}.card{{width:100%;max-width:100%;text-align:center}}h1{{font-size:22px;margin-bottom:10px}}h2{{font-size:18px;color:#28a745;margin-bottom:20px}}input{{width:100%;padding:14px;font-size:16px;border:2px solid #eee;border-radius:8px;text-align:center;margin-bottom:20px;background:#f9f9f9}}.btn-wa{{width:100%;padding:16px;font-size:18px;font-weight:bold;background:#25D366;color:white;border:none;border-radius:12px;cursor:pointer;margin-bottom:20px;display:block;text-decoration:none}}.stats{{font-size:14px;color:#666;line-height:1.6}}.progress-bar{{width:100%;height:25px;background:#eee;border-radius:12px;overflow:hidden;margin:10px 0}}.progress-fill{{height:100%;background:#28a745;transition:width 0.3s}}</style>
     </head><body><div class="card"><h1>Şəxsi Linkiniz</h1>
-    <input value="https://abak.onrender.com/?ref={user.code}" readonly onclick="this.select()">
+    <input value="https://master-babak.onrender.com/?ref={user.code}" readonly onclick="this.select()">
     <a href="https://wa.me/?text={share_text}" class="btn-wa">WhatsApp-da Paylaş</a>
     <div class="stats"><p>Dəvət sayı (Baxış): <b>{count}</b></p><p>Endirim: <b>{discount}</b></p>
     <div class="progress-bar"><div class="progress-fill" style="width:{progress}%"></div></div>
