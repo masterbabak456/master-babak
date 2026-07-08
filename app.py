@@ -1,9 +1,7 @@
 from flask import Flask, request, redirect, make_response, render_template_string, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from markupsafe import escape
-import os
-import re
-import uuid
+import os, re, uuid
 
 app = Flask(__name__)
 
@@ -55,12 +53,13 @@ def home():
         h3{{font-size:13px;color:#777;margin-bottom:12px;line-height:1.4}}
         .video-wrapper {{ position: relative; margin-bottom: 15px; }}
         video{{width:100%;height:140px;object-fit:cover;border-radius:10px;background:#000;display:block}}
-        #trackStatus {{ position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.7); color: white; padding: 5px 10px; border-radius: 5px; font-size: 12px; display: none; }}
+        #trackStatus {{ position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.8); color: white; padding: 8px 12px; border-radius: 5px; font-size: 13px; display: none; z-index: 10; }}
         .promo{{font-size:13px;margin-bottom:15px;line-height:1.5;background:#fff;padding:10px;border-radius:8px;box-shadow:0 2px 5px rgba(0,0,0,0.05)}}
         .input-group{{margin: 20px 0; text-align: right;}}
         .input-group label{{display:block; margin-bottom:5px; font-weight:bold; font-size:14px;}}
         .input-group input{{width:100%; padding:14px; font-size:16px; border:2px solid #ddd; border-radius:10px; direction:ltr; text-align:left;}}
         .btn-main{{width:100%;padding:18px;font-size:20px;font-weight:bold;background:#28a745;color:white;border:none;border-radius:12px;cursor:pointer;box-shadow:0 4px 10px rgba(40,167,69,0.3)}}
+        #debugBar {{ position: fixed; bottom: 0; left: 0; right: 0; background: #222; color: #0f0; padding: 10px; font-size: 12px; font-family: monospace; z-index: 9999; word-break: break-all; }}
     </style></head><body><div class="container">
     <img src="/static/logo.png" alt="Logo"><h1>Cənub Azərbaycan</h1>
     <h2>TKD / Kickboxing / MMA</h2>
@@ -77,7 +76,7 @@ def home():
     
     <form action="/getlink" method="POST" id="regForm">
         <div class="input-group">
-            <label>📱 Nömrənizi daxil edin:</label>
+            <label> Nömrənizi daxil edin:</label>
             <input type="tel" name="phone" placeholder="+994 50 123 45 67" required pattern="[0-9+ ]{{10,15}}">
         </div>
         <input type="hidden" name="parent" value="{safe_ref}" id="parentCode">
@@ -85,23 +84,33 @@ def home():
     </form>
     </div>
 
+    <div id="debugBar">System initializing...</div>
+
     <script>
+        const debugBar = document.getElementById('debugBar');
+        
+        // 1. ساخت شناسه منحصر به فرد برای دستگاه
         let vid = localStorage.getItem('tkd_vid');
         if (!vid) {
             vid = 'dev_' + Math.random().toString(36).substr(2, 9);
             localStorage.setItem('tkd_vid', vid);
         }
 
+        // 2. مدیریت کد ارجاع (Ref Code)
         const urlParams = new URLSearchParams(window.location.search);
-        const refCode = urlParams.get('ref');
+        let refCode = urlParams.get('ref');
+        
         if (refCode) {
             localStorage.setItem('tkd_ref', refCode);
             document.getElementById('parentCode').value = refCode;
         } else {
-            const savedRef = localStorage.getItem('tkd_ref');
-            if (savedRef) document.getElementById('parentCode').value = savedRef;
+            refCode = localStorage.getItem('tkd_ref');
+            if (refCode) document.getElementById('parentCode').value = refCode;
         }
 
+        debugBar.innerText = 'REF: ' + (refCode || 'NONE') + ' | VID: ' + vid;
+
+        // 3. ثبت امتیاز هنگام پخش ویدیو
         const video = document.getElementById('mainVideo');
         const statusBox = document.getElementById('trackStatus');
         let tracked = false;
@@ -110,27 +119,37 @@ def home():
             if (!tracked && refCode) {
                 tracked = true;
                 statusBox.style.display = 'block';
-                statusBox.innerText = '⏳ Qeyd olunur...';
+                statusBox.innerText = '⏳ Göndərilir...';
+                debugBar.innerText += ' | Sending...';
                 
                 fetch('/track_view', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({code: refCode, vid: vid})
                 })
-                .then(res => res.json())
+                .then(res => {
+                    debugBar.innerText += ' | Status: ' + res.status;
+                    return res.json();
+                })
                 .then(data => {
+                    debugBar.innerText += ' | Response: ' + JSON.stringify(data);
                     if(data.status === 'ok') {
-                        statusBox.innerText = '✅ Baxış qeydə alındı!';
-                        statusBox.style.background = 'rgba(40,167,69,0.9)';
+                        statusBox.innerText = '✅ Qeyd olundu!';
+                        statusBox.style.background = 'rgba(40,167,69,0.95)';
+                        alert('UĞURLU! Baxış sayı artdı.');
                     } else {
-                        statusBox.innerText = 'ℹ️ Artıq qeyd olunub';
-                        statusBox.style.background = 'rgba(108,117,125,0.9)';
+                        statusBox.innerText = 'ℹ️ Artıq var';
+                        statusBox.style.background = 'rgba(108,117,125,0.95)';
                     }
                 })
                 .catch(err => {
-                    statusBox.innerText = ' Xəta! İnterneti yoxla';
-                    statusBox.style.background = 'rgba(220,53,69,0.9)';
+                    debugBar.innerText += ' | ERROR: ' + err;
+                    statusBox.innerText = '❌ Xəta!';
+                    statusBox.style.background = 'rgba(220,53,69,0.95)';
+                    alert('XƏTA! İnterneti yoxla.');
                 });
+            } else if (!refCode) {
+                debugBar.innerText += ' | NO REF CODE FOUND';
             }
         });
     </script>
