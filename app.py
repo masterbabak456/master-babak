@@ -1,289 +1,508 @@
-from flask import Flask, request, redirect, make_response, render_template_string, jsonify
+from flask import Flask, request, redirect, make_response, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from markupsafe import escape
-import os, re, uuid
+from sqlalchemy import UniqueConstraint, inspect, text
+from sqlalchemy.exc import IntegrityError
+from werkzeug.utils import secure_filename
+import os, re, uuid, json
+import cloudinary
+import cloudinary.uploader
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'dev_secret_key_change_in_render')
 
-# تنظیمات دیتابیس
-db_uri = os.environ.get('DATABASE_URL', 'sqlite:///referrals_new.db')
+# --- تنظیمات دیتابیس ---
+db_uri = os.environ.get('DATABASE_URL', 'sqlite:///referrals_multi.db')
 if db_uri and db_uri.startswith("postgres://"):
     db_uri = db_uri.replace("postgres://", "postgresql://", 1)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'babak1234')
+
+# --- تنظیمات Cloudinary ---
+cloudinary.config(
+    cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME'),
+    api_key=os.environ.get('CLOUDINARY_API_KEY'),
+    api_secret=os.environ.get('CLOUDINARY_API_SECRET')
+)
+
+SUPER_ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'babak1234')
+BASE_URL = os.environ.get('BASE_URL', 'https://master-babak.onrender.com')
 
 db = SQLAlchemy(app)
 
+# --- مدل‌ها ---
+
+class Coach(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    slug = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    name = db.Column(db.String(100), nullable=False)
+    gym_name = db.Column(db.String(100))
+    title = db.Column(db.String(100))
+    phone = db.Column(db.String(20))
+    logo_url = db.Column(db.String(300), default='/static/logo.png')
+    video_url = db.Column(db.String(300), default='/static/videomaster.mp4')
+    ad_text = db.Column(db.Text)
+    reward_rules = db.Column(db.Text) 
+    password = db.Column(db.String(100))
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+
 class Referral(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    phone = db.Column(db.String(20), unique=True, nullable=False, index=True)
+    coach_id = db.Column(db.Integer, db.ForeignKey('coach.id'), nullable=True, index=True)
+    phone = db.Column(db.String(20), nullable=False, index=True)
     code = db.Column(db.String(20), unique=True, nullable=False, index=True)
+    parent_code = db.Column(db.String(20), nullable=True, index=True)
+    owner_vid = db.Column(db.String(50), nullable=True)
     
+    __table_args__ = (
+        UniqueConstraint('coach_id', 'phone', name='uq_coach_phone'),
+    )
+
 class Visit(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    code = db.Column(db.String(20), nullable=False, index=True)
+    coach_id = db.Column(db.Integer, db.ForeignKey('coach.id'), nullable=True, index=True)
+    referral_code = db.Column(db.String(20), nullable=False, index=True)
     visitor_id = db.Column(db.String(50), nullable=False, index=True)
+    __table_args__ = (
+        UniqueConstraint('coach_id', 'referral_code', 'visitor_id', name='uq_visit_coach_code_visitor'),
+    )
+
+# --- توابع کمکی ---
+
+def ensure_schema():
+    insp = inspect(db.engine)
+    tables = insp.get_table_names()
+    db.create_all()
+    
+    default_coach = Coach.query.filter_by(slug='babak').first()
+    if not default_coach:
+        default_coach = Coach(
+            slug='babak', name='Master Babak Vosoghi', gym_name='Cənub Azərbaycan',
+            title='8th Dan - TKD / Kickboxing / MMA', phone='0513909912',
+            ad_text='🥋 Dostlarını dəvət et!\n10 nəfər → 10%\n20 nəfər → 20%',
+            reward_rules='10:10,20:20,30:30,40:40,50:50', password='coach123'
+        )
+        db.session.add(default_coach)
+        db.session.commit()
+    
+    default_coach_id = default_coach.id
+
+    with db.engine.begin() as conn:
+        if 'referral' in tables:
+            cols = {c['name'] for c in insp.get_columns('referral')}
+            if 'coach_id' not in cols:
+                conn.execute(text('ALTER TABLE referral ADD COLUMN coach_id INTEGER'))
+                conn.execute(text(f'UPDATE referral SET coach_id = {default_coach_id} WHERE coach_id IS NULL'))
+        
+        if 'visit' in tables:
+            cols = {c['name'] for c in insp.get_columns('visit')}
+            if 'coach_id' not in cols:
+                conn.execute(text('ALTER TABLE visit ADD COLUMN coach_id INTEGER'))
+                conn.execute(text(f'UPDATE visit SET coach_id = {default_coach_id} WHERE coach_id IS NULL'))
 
 with app.app_context():
-    db.create_all()
+    ensure_schema()
 
-def calculate_discount(count):
-    thresholds = [(50, "50%"), (40, "40%"), (30, "30%"), (20, "20%"), (10, "10%")]
-    for threshold, discount in thresholds:
-        if count >= threshold: return discount, threshold
-    return "0%", 10
+def calculate_discount(count, rules_str):
+    rules = {}
+    if rules_str:
+        try:
+            for part in rules_str.split(','):
+                k, v = part.split(':')
+                rules[int(k)] = int(v)
+        except: pass
+    if not rules: rules = {10:10, 20:20, 30:30, 40:40, 50:50}
 
-@app.route("/")
-def home():
-    ref = request.args.get("ref")
-    safe_ref = escape(ref) if ref else ""
+    sorted_thresholds = sorted(rules.keys())
+    current_pct = 0
+    next_lvl = sorted_thresholds[0] if sorted_thresholds else 50
     
-    return f"""
-    <!DOCTYPE html>
-    <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cənub Azərbaycan</title>
-    <style>
-        *{{box-sizing:border-box;margin:0;padding:0}}
-        body{{font-family:Arial,sans-serif;background:#f8f9fa;color:#333;min-height:100vh}}
-        .container{{width:100%;max-width:600px;margin:0 auto;padding:15px;text-align:center}}
-        img{{width:140px;height:auto;margin-bottom:8px}}
-        h1{{font-size:22px;margin-bottom:4px}}h2{{font-size:15px;color:#555;margin-bottom:4px}}
-        h3{{font-size:13px;color:#777;margin-bottom:12px;line-height:1.4}}
-        .video-wrapper {{ position: relative; margin-bottom: 15px; }}
-        video{{width:100%;height:140px;object-fit:cover;border-radius:10px;background:#000;display:block}}
-        #trackStatus {{ position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.8); color: white; padding: 8px 12px; border-radius: 5px; font-size: 13px; display: none; z-index: 10; }}
-        .promo{{font-size:13px;margin-bottom:15px;line-height:1.5;background:#fff;padding:10px;border-radius:8px;box-shadow:0 2px 5px rgba(0,0,0,0.05)}}
-        .input-group{{margin: 20px 0; text-align: right;}}
-        .input-group label{{display:block; margin-bottom:5px; font-weight:bold; font-size:14px;}}
-        .input-group input{{width:100%; padding:14px; font-size:16px; border:2px solid #ddd; border-radius:10px; direction:ltr; text-align:left;}}
-        .btn-main{{width:100%;padding:18px;font-size:20px;font-weight:bold;background:#28a745;color:white;border:none;border-radius:12px;cursor:pointer;box-shadow:0 4px 10px rgba(40,167,69,0.3)}}
-        #debugOverlay {{ position: fixed; top: 0; left: 0; right: 0; background: rgba(0,0,0,0.9); color: #0f0; padding: 15px; font-size: 14px; font-family: monospace; z-index: 99999; word-break: break-all; max-height: 40vh; overflow-y: auto; }}
-    </style></head><body>
-    
-    <div id="debugOverlay">System ready. Waiting for video play...</div>
+    for t in sorted_thresholds:
+        if count >= t:
+            current_pct = rules[t]
+            idx = sorted_thresholds.index(t)
+            if idx + 1 < len(sorted_thresholds): next_lvl = sorted_thresholds[idx+1]
+            else: next_lvl = t
+            
+    remaining = max(0, next_lvl - count)
+    if count >= sorted_thresholds[-1]: remaining = 0
+    return f"{current_pct}%", next_lvl, remaining
 
-    <div class="container">
-        <img src="/static/logo.png" alt="Logo"><h1>Cənub Azərbaycan</h1>
-        <h2>TKD / Kickboxing / MMA</h2>
-        <h3>Master Babak Vosoghi, 8-ci Dan<br>Novxanı, 0513909912</h3>
+def clean_phone_number(phone):
+    digits = re.sub(r'\D', '', phone)
+    return digits
+
+def get_visitor_id():
+    vid = request.cookies.get('tkd_visitor_id')
+    if not vid: vid = uuid.uuid4().hex
+    return vid
+
+def new_unique_code():
+    while True:
+        code = uuid.uuid4().hex[:6].upper()
+        if not Referral.query.filter_by(code=code).first():
+            return code
+
+def upload_to_cloudinary(file, resource_type="image"):
+    try:
+        result = cloudinary.uploader.upload(file, resource_type=resource_type)
+        return result['secure_url']
+    except Exception as e:
+        print(f"Upload Error: {e}")
+        return None
+
+# --- مسیرهای عمومی ---
+
+@app.route('/<slug>')
+def public_landing(slug):
+    coach = Coach.query.filter_by(slug=slug).first()
+    if not coach: return "Coach not found", 404
         
-        <div class="video-wrapper">
-            <div id="trackStatus"></div>
-            <video id="mainVideo" controls playsinline preload="metadata">
-                <source src="/static/videomaster.mp4" type="video/mp4">
-            </video>
+    ref_code = request.args.get('ref')
+    visitor_id = get_visitor_id()
+    
+    # توجه: در اینجا {{ و }} برای_escape کردن آکولادهای JS استفاده شده است
+    video_html = f"""
+    <div style="width:100%; height:8vh; min-height:50px; background:#000; position:relative; margin: 10px 0; border-radius:5px; overflow:hidden;">
+        <video id="main-video" src="{coach.video_url}" style="width:100%; height:100%; object-fit:cover;" muted playsinline poster="{coach.logo_url}"></video>
+        <div id="play-overlay" onclick="playVideo()" style="position:absolute; top:0; left:0; width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.3); cursor:pointer;">
+            <span style="color:white; font-weight:bold; font-size:14px;">▶ PLAY VIDEO</span>
         </div>
-
-        <div class="promo"><b>Endirim Kampaniyası</b><br>Videonu izləyin və şəxsi linkinizi alın.<br><b>10→10% | 20→20% | 30→30% | 40→40% | 50→50%</b></div>
-        
-        <form action="/getlink" method="POST" id="regForm">
-            <div class="input-group">
-                <label>📱 Nömrənizi daxil edin:</label>
-                <input type="tel" name="phone" placeholder="+994 50 123 45 67" required pattern="[0-9+ ]{{10,15}}">
-            </div>
-            <input type="hidden" name="parent" value="{safe_ref}" id="parentCode">
-            <button type="submit" class="btn-main">Şəxsi Linkimi Al</button>
-        </form>
     </div>
+    """
 
-    <script>
-        const debug = document.getElementById('debugOverlay');
-        const log = (msg) => { debug.innerText += '\\n> ' + msg; console.log(msg); };
+    resp_html = f"""
+    <!DOCTYPE html>
+    <html lang="az"><head>
+        <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>{coach.name}</title>
+        <link rel="manifest" href="/manifest.json">
+        <style>
+            body {{ font-family: sans-serif; margin: 0; padding: 15px; background: #f4f4f4; text-align: center; }}
+            .card {{ background: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 15px; }}
+            input, button {{ padding: 10px; margin: 5px 0; width: 90%; border-radius: 5px; border: 1px solid #ddd; }}
+            button {{ background: #25D366; color: white; border: none; font-weight: bold; }}
+            .btn-blue {{ background: #007bff; }}
+        </style>
+    </head><body>
+        <div class="card">
+            <img src="{coach.logo_url}" style="width:70px; border-radius:50%;">
+            <h2>{coach.name}</h2><p>{coach.title}</p><p>📞 {coach.phone}</p>
+        </div>
+        {video_html}
+        <div class="card"><h3>🎁 Kampaniya</h3><p style="white-space:pre-line">{coach.ad_text}</p></div>
+        <div class="card">
+            <form method="POST" action="/{slug}/register">
+                <input type="hidden" name="ref" value="{ref_code or ''}">
+                <input type="tel" name="phone" required placeholder="Nömrəniz (050...)">
+                <button type="submit" class="btn-blue">Şəxsi Linkimi Al</button>
+            </form>
+        </div>
+        <script>
+            var vid = document.getElementById("main-video");
+            var overlay = document.getElementById("play-overlay");
+            var hasTracked = false;
 
-        let vid = localStorage.getItem('tkd_vid');
-        if (!vid) {
-            vid = 'dev_' + Math.random().toString(36).substr(2, 9);
-            localStorage.setItem('tkd_vid', vid);
-        }
-        log('Visitor ID: ' + vid);
-
-        const urlParams = new URLSearchParams(window.location.search);
-        let refCode = urlParams.get('ref');
-        if (refCode) {
-            localStorage.setItem('tkd_ref', refCode);
-            document.getElementById('parentCode').value = refCode;
-        } else {
-            refCode = localStorage.getItem('tkd_ref');
-            if (refCode) document.getElementById('parentCode').value = refCode;
-        }
-        log('Ref Code: ' + (refCode || 'NONE'));
-
-        const video = document.getElementById('mainVideo');
-        const statusBox = document.getElementById('trackStatus');
-        let tracked = false;
-
-        video.addEventListener('play', function() {
-            log('PLAY event triggered!');
-            if (!tracked && refCode) {
-                tracked = true;
-                statusBox.style.display = 'block';
-                statusBox.innerText = '⏳ Göndərilir...';
-                log('Sending POST to /track_view...');
+            function playVideo() {{
+                if (vid.requestFullscreen) vid.requestFullscreen();
+                else if (vid.webkitEnterFullscreen) vid.webkitEnterFullscreen();
                 
-                fetch('/track_view', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({code: refCode, vid: vid})
-                })
-                .then(res => {
-                    log('HTTP Status: ' + res.status);
-                    return res.json();
-                })
-                .then(data => {
-                    log('Server Response: ' + JSON.stringify(data));
-                    if(data.status === 'ok') {
-                        statusBox.innerText = '✅ Qeyd olundu!';
-                        statusBox.style.background = 'rgba(40,167,69,0.95)';
-                        alert('UĞURLU! Baxış sayı artdı.');
-                    } else {
-                        statusBox.innerText = 'ℹ️ Artıq var';
-                        statusBox.style.background = 'rgba(108,117,125,0.95)';
-                    }
-                })
-                .catch(err => {
-                    log('FETCH ERROR: ' + err.toString());
-                    statusBox.innerText = '❌ Xəta!';
-                    statusBox.style.background = 'rgba(220,53,69,0.95)';
-                    alert('XƏTA! İnterneti yoxla.');
-                });
-            } else if (!refCode) {
-                log('ERROR: No ref code found!');
-            } else {
-                log('Already tracked in this session.');
-            }
-        });
-    </script>
-    </body></html>"""
-
-@app.route("/track_view", methods=["POST"])
-def track_view():
-    data = request.get_json()
-    code = data.get('code')
-    vid = data.get('vid')
+                vid.muted = false;
+                vid.play();
+                overlay.style.display = 'none';
+                
+                if (!hasTracked) {{
+                    fetch('/track_view', {{
+                        method: 'POST',
+                        headers: {{'Content-Type': 'application/json'}},
+                        body: JSON.stringify({{ code: '{ref_code or ""}', slug: '{slug}', vid: '{visitor_id}' }})
+                    }});
+                    hasTracked = true;
+                }}
+            }}
+            
+            document.addEventListener('fullscreenchange', function() {{
+                if (!document.fullscreenElement) {{
+                    vid.pause();
+                    overlay.style.display = 'flex';
+                    vid.currentTime = 0;
+                }}
+            }});
+            
+            if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
+        </script>
+    </body></html>
+    """
     
-    if code and vid:
-        existing = Visit.query.filter_by(code=code, visitor_id=vid).first()
-        if not existing:
-            db.session.add(Visit(code=code, visitor_id=vid))
-            db.session.commit()
-            return jsonify({"status": "ok"})
-    return jsonify({"status": "duplicate"})
+    response = make_response(resp_html)
+    if not request.cookies.get('tkd_visitor_id'):
+        response.set_cookie('tkd_visitor_id', visitor_id, max_age=60*60*24*365)
+    return response
 
-
-@app.route("/getlink", methods=["POST"])
-def getlink():
-    phone = request.form.get("phone", "").strip()
-    parent = request.form.get("parent", "")
+@app.route('/<slug>/register', methods=['POST'])
+def register_user(slug):
+    coach = Coach.query.filter_by(slug=slug).first()
+    if not coach: return "Not found", 404
     
-    if not phone or len(phone) < 10:
-        return redirect("/")
-        
-    clean_phone = re.sub(r'[^0-9]', '', phone)
+    phone = request.form.get('phone')
+    parent_ref = request.form.get('ref')
+    clean_phone = clean_phone_number(phone)
     
-    user = Referral.query.filter_by(phone=clean_phone).first()
+    if len(clean_phone) < 9: return redirect(f'/{slug}')
+    
+    user = Referral.query.filter_by(coach_id=coach.id, phone=clean_phone).first()
     
     if not user:
-        new_code = str(uuid.uuid4())[:8]
-        user = Referral(phone=clean_phone, code=new_code)
+        new_code = new_unique_code()
+        valid_parent = None
+        if parent_ref:
+            p = Referral.query.filter_by(code=parent_ref, coach_id=coach.id).first()
+            if p and p.phone != clean_phone: valid_parent = parent_ref
+        
+        user = Referral(coach_id=coach.id, phone=clean_phone, code=new_code, parent_code=valid_parent)
         db.session.add(user)
         db.session.commit()
     
-    count = Visit.query.filter_by(code=user.code).count()
-    discount, next_level = calculate_discount(count)
-    remaining = max(0, next_level - count)
-    progress = min(100, (count / next_level) * 100) if next_level > 0 else 0
-    
-    share_text = f"🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={user.code}"
-    
-    return f"""<!DOCTYPE html>
-    <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Linkiniz Hazırdır</title>
-    <style>*{{box-sizing:border-box;margin:0;padding:0}}body{{font-family:Arial,sans-serif;background:#fff;color:#333;width:100vw;min-height:100vh;padding:20px;display:flex;flex-direction:column;align-items:center}}.card{{width:100%;max-width:100%;text-align:center}}h1{{font-size:22px;margin-bottom:10px}}h2{{font-size:18px;color:#28a745;margin-bottom:20px}}input{{width:100%;padding:14px;font-size:16px;border:2px solid #eee;border-radius:8px;text-align:center;margin-bottom:20px;background:#f9f9f9}}.btn-wa{{width:100%;padding:16px;font-size:18px;font-weight:bold;background:#25D366;color:white;border:none;border-radius:12px;cursor:pointer;margin-bottom:20px;display:block;text-decoration:none}}.stats{{font-size:14px;color:#666;line-height:1.6}}.progress-bar{{width:100%;height:25px;background:#eee;border-radius:12px;overflow:hidden;margin:10px 0}}.progress-fill{{height:100%;background:#28a745;transition:width 0.3s}}</style>
-    </head><body><div class="card"><h1>Şəxsi Linkiniz</h1><h2>Hazırdır!</h2>
-    <input value="https://master-babak.onrender.com/?ref={user.code}" readonly onclick="this.select()">
-    <a href="https://wa.me/?text={share_text}" class="btn-wa">📲 WhatsApp-da Paylaş</a>
-    <div class="stats"><p>Dəvət sayı (Baxış): <b>{count}</b></p><p>Endirim: <b>{discount}</b></p>
-    <div class="progress-bar"><div class="progress-fill" style="width:{progress}%"></div></div>
-    <p>Qalan: <b>{remaining} nəfər</b></p></div></div></body></html>"""
+    resp = make_response(redirect(f'/{slug}/user/{user.code}'))
+    resp.set_cookie('tkd_user_code', user.code, max_age=60*60*24*30)
+    return resp
 
+@app.route('/<slug>/user/<code>')
+def user_page(slug, code):
+    coach = Coach.query.filter_by(slug=slug).first()
+    user = Referral.query.filter_by(code=code, coach_id=coach.id).first()
+    if not user: return "User not found", 404
+    
+    views_count = Visit.query.filter_by(referral_code=user.code, coach_id=coach.id).count()
+    children_count = Referral.query.filter_by(parent_code=user.code, coach_id=coach.id).count()
+    discount, next_lvl, remaining = calculate_discount(views_count, coach.reward_rules)
+    progress = min(100, int((views_count / next_lvl) * 100)) if next_lvl > 0 else 100
+    
+    share_link = f"{BASE_URL}/{slug}?ref={user.code}"
+    share_msg = f"🥋 {coach.name}\\n{share_link}"
+    
+    return f"""
+    <html><head><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="manifest" href="/manifest.json"></head>
+    <body style="font-family:sans-serif; text-align:center; padding:20px; background:#f4f4f4;">
+        <div style="background:white; padding:15px; border-radius:10px; margin-bottom:15px;">
+            <img src="{coach.logo_url}" style="width:50px; border-radius:50%;">
+            <h3>{coach.name}</h3>
+        </div>
+        <div style="background:white; padding:15px; border-radius:10px;">
+            <h2>Linkiniz Hazırdır!</h2>
+            <div style="background:#eee; padding:10px; word-break:break-all; font-size:12px;">{share_link}</div>
+            <button onclick="navigator.clipboard.writeText('{share_link}')" style="width:100%; padding:10px; margin:10px 0; background:#007bff; color:white; border:none; border-radius:5px;">📋 Copy</button>
+            <a href="https://wa.me/?text={share_msg}" style="display:block; padding:10px; background:#25D366; color:white; text-decoration:none; border-radius:5px;">📲 WhatsApp</a>
+            <hr>
+            <p>Baxış: <b>{views_count}</b> | Dəvət: <b>{children_count}</b></p>
+            <p>Endirim: <b>{discount}</b> ({remaining} qalıb)</p>
+            <div style="background:#ddd; height:10px; border-radius:5px;"><div style="background:green; height:100%; width:{progress}%"></div></div>
+        </div>
+    </body></html>
+    """
 
-@app.route("/mylink")
-def mylink():
-    phone = request.args.get("phone")
-    if not phone:
-        return """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-        <body style="font-family:Arial;display:flex;justify-content:center;align-items:center;height:100vh;">
-        <form action="/mylink" method="get" style="text-align:center;padding:20px;border:1px solid #ddd;border-radius:10px;">
-        <h2>Linkinizi görmək üçün nömrənizi yazın</h2>
-        <input type="tel" name="phone" placeholder="+994..." required style="padding:10px;margin:10px 0;width:100%;">
-        <button type="submit" style="padding:10px 20px;background:#28a745;color:white;border:none;border-radius:5px;">Axtar</button>
-        </form></body></html>"""
+@app.route('/track_view', methods=['POST'])
+def track_view():
+    data = request.get_json() or {}
+    code = data.get('code')
+    slug = data.get('slug')
+    vid_id = data.get('vid')
+    
+    coach = Coach.query.filter_by(slug=slug).first()
+    if not coach or not code or not vid_id: return jsonify(status='invalid')
+    
+    owner = Referral.query.filter_by(code=code, coach_id=coach.id).first()
+    if not owner: return jsonify(status='invalid')
+    
+    if request.cookies.get('tkd_user_code') == code: return jsonify(status='self')
+    
+    existing = Visit.query.filter_by(coach_id=coach.id, referral_code=code, visitor_id=vid_id).first()
+    if existing: return jsonify(status='duplicate')
+    
+    try:
+        db.session.add(Visit(coach_id=coach.id, referral_code=code, visitor_id=vid_id))
+        db.session.commit()
+        return jsonify(status='ok')
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify(status='duplicate')
+
+# --- Super Admin ---
+
+@app.route('/superadmin', methods=['GET', 'POST'])
+def super_admin():
+    if request.method == 'POST':
+        if request.form.get('password') == SUPER_ADMIN_PASSWORD:
+            resp = make_response(redirect('/superadmin/dashboard'))
+            resp.set_cookie('admin_auth', SUPER_ADMIN_PASSWORD)
+            return resp
+        return "Wrong Password"
+    if request.cookies.get('admin_auth') != SUPER_ADMIN_PASSWORD:
+        return "<form method='POST'><input type='password' name='password'><button>Login</button></form>"
+    return redirect('/superadmin/dashboard')
+
+@app.route('/superadmin/dashboard')
+def super_admin_dashboard():
+    if request.cookies.get('admin_auth') != SUPER_ADMIN_PASSWORD: return redirect('/superadmin')
+    coaches = Coach.query.all()
+    html = "<h2>Coaches Management</h2><ul>"
+    for c in coaches:
+        html += f"<li><b>{c.name}</b> (<a href='/{c.slug}' target='_blank'>/{c.slug}</a>) - <a href='/superadmin/edit/{c.id}'>Edit Full Profile</a></li>"
+    html += "</ul><br><a href='/superadmin/new' style='background:green; color:white; padding:10px; text-decoration:none;'>➕ Add New Coach</a>"
+    return html
+
+@app.route('/superadmin/new', methods=['GET', 'POST'])
+def super_admin_new():
+    if request.cookies.get('admin_auth') != SUPER_ADMIN_PASSWORD: return redirect('/superadmin')
+    if request.method == 'POST':
+        slug = request.form.get('slug')
         
-    clean_phone = re.sub(r'[^0-9]', '', phone)
-    user = Referral.query.filter_by(phone=clean_phone).first()
-    
-    if not user:
-        return "<h3 style='text-align:center;margin-top:50px;'>Bu nömrə ilə qeydiyyat tapılmadı.</h3>"
+        logo_url = '/static/logo.png'
+        video_url = '/static/videomaster.mp4'
         
-    count = Visit.query.filter_by(code=user.code).count()
-    discount, next_level = calculate_discount(count)
-    remaining = max(0, next_level - count)
-    progress = min(100, (count / next_level) * 100) if next_level > 0 else 0
-    
-    share_text = f"🥋 TKD Kampaniyası%0A%0Ahttps://master-babak.onrender.com/?ref={user.code}"
-    
-    return f"""<!DOCTYPE html>
-    <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Linkim</title>
-    <style>*{{box-sizing:border-box;margin:0;padding:0}}body{{font-family:Arial,sans-serif;background:#fff;color:#333;width:100vw;min-height:100vh;padding:20px;display:flex;flex-direction:column;align-items:center}}.card{{width:100%;max-width:100%;text-align:center}}h1{{font-size:22px;margin-bottom:10px}}h2{{font-size:18px;color:#28a745;margin-bottom:20px}}input{{width:100%;padding:14px;font-size:16px;border:2px solid #eee;border-radius:8px;text-align:center;margin-bottom:20px;background:#f9f9f9}}.btn-wa{{width:100%;padding:16px;font-size:18px;font-weight:bold;background:#25D366;color:white;border:none;border-radius:12px;cursor:pointer;margin-bottom:20px;display:block;text-decoration:none}}.stats{{font-size:14px;color:#666;line-height:1.6}}.progress-bar{{width:100%;height:25px;background:#eee;border-radius:12px;overflow:hidden;margin:10px 0}}.progress-fill{{height:100%;background:#28a745;transition:width 0.3s}}</style>
-    </head><body><div class="card"><h1>Şəxsi Linkiniz</h1>
-    <input value="https://master-babak.onrender.com/?ref={user.code}" readonly onclick="this.select()">
-    <a href="https://wa.me/?text={share_text}" class="btn-wa">WhatsApp-da Paylaş</a>
-    <div class="stats"><p>Dəvət sayı (Baxış): <b>{count}</b></p><p>Endirim: <b>{discount}</b></p>
-    <div class="progress-bar"><div class="progress-fill" style="width:{progress}%"></div></div>
-    <p>Qalan: <b>{remaining} nəfər</b></p></div></div></body></html>"""
+        if 'logo' in request.files and request.files['logo'].filename:
+            url = upload_to_cloudinary(request.files['logo'], "image")
+            if url: logo_url = url
+            
+        if 'video' in request.files and request.files['video'].filename:
+            url = upload_to_cloudinary(request.files['video'], "video")
+            if url: video_url = url
 
+        db.session.add(Coach(
+            slug=slug, name=request.form.get('name'), gym_name=request.form.get('gym_name'),
+            title=request.form.get('title'), phone=request.form.get('phone'),
+            logo_url=logo_url, video_url=video_url, ad_text=request.form.get('ad_text'),
+            reward_rules=request.form.get('reward_rules'), password=request.form.get('password')
+        ))
+        db.session.commit()
+        return redirect('/superadmin/dashboard')
+    
+    return """
+    <h2>New Coach (Permanent Storage)</h2>
+    <form method='POST' enctype='multipart/form-data'>
+        Slug: <input name='slug' required><br>
+        Name: <input name='name' required><br>
+        Gym: <input name='gym_name'><br>
+        Title: <input name='title'><br>
+        Phone: <input name='phone'><br>
+        Logo: <input type='file' name='logo'><br>
+        Video: <input type='file' name='video'><br>
+        Ad Text: <textarea name='ad_text'></textarea><br>
+        Rules (10:10,20:20): <input name='reward_rules'><br>
+        Password: <input name='password'><br>
+        <button type='submit'>Create Coach</button>
+    </form>
+    """
 
-@app.route("/admin")
-def admin():
-    stored_key = request.cookies.get("admin_key")
-    url_key = request.args.get("key", "")
+@app.route('/superadmin/edit/<int:id>', methods=['GET', 'POST'])
+def super_admin_edit(id):
+    if request.cookies.get('admin_auth') != SUPER_ADMIN_PASSWORD: return redirect('/superadmin')
+    coach = Coach.query.get_or_404(id)
     
-    if stored_key != ADMIN_PASSWORD and url_key != ADMIN_PASSWORD:
-        return """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-        <body style="font-family:Arial;background:#222;color:white;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;">
-        <div style="text-align:center;padding:30px;border:1px solid #444;border-radius:10px;width:90%;max-width:350px;">
-        <h2>Admin Panel</h2><form action="/admin" method="get">
-        <input type="password" name="key" placeholder="Password" style="padding:12px;font-size:16px;border-radius:5px;border:none;width:100%;margin-bottom:15px;">
-        <button type="submit" style="padding:12px;font-size:16px;background:#28a745;color:white;border:none;border-radius:5px;cursor:pointer;width:100%;">Daxil ol</button>
-        </form></div></body></html>"""
-
-    from sqlalchemy import func
-    results = db.session.query(Referral.phone, Referral.code, func.count(Visit.id).label('view_count')).outerjoin(Visit, Referral.code == Visit.code).group_by(Referral.id).all()
-    total_links = len(results)
-    
-    html = f"""<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard</title>
-    <style>body{{font-family:Arial;background:#111;color:white;padding:15px;margin:0}}h1{{font-size:20px;margin-bottom:10px}}.table-wrap{{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:15px}}table{{border-collapse:collapse;width:100%;min-width:500px;background:white;color:black;font-size:14px}}th,td{{padding:10px;border:1px solid #ddd;text-align:left}}th{{background:#f1f1f1}}.bar-bg{{width:100px;height:15px;background:#eee;border-radius:8px;overflow:hidden;display:inline-block;vertical-align:middle;margin-right:5px}}.bar-fill{{height:100%;background:green}}</style>
-    </head><body><h1>TKD Dashboard ({total_links} Link)</h1><div class="table-wrap"><table>
-    <tr><th>Phone</th><th>Code</th><th>Views</th><th>Discount</th></tr>"""
-    
-    for phone, code, count in results:
-        discount, next_level = calculate_discount(count)
-        remaining = max(0, next_level - count)
-        progress = min(100, (count / next_level) * 100) if next_level > 0 else 0
+    if request.method == 'POST':
+        coach.name = request.form.get('name')
+        coach.gym_name = request.form.get('gym_name')
+        coach.title = request.form.get('title')
+        coach.phone = request.form.get('phone')
+        coach.ad_text = request.form.get('ad_text')
+        coach.reward_rules = request.form.get('reward_rules')
         
-        html += f"""<tr><td>{phone}</td><td>{code}</td><td>{count}</td><td>
-        {discount}<br><div class="bar-bg"><div class="bar-fill" style="width:{progress}%"></div></div>
-        <small>({remaining} qalıb)</small></td></tr>"""
+        if 'logo' in request.files and request.files['logo'].filename:
+            url = upload_to_cloudinary(request.files['logo'], "image")
+            if url: coach.logo_url = url
+            
+        if 'video' in request.files and request.files['video'].filename:
+            url = upload_to_cloudinary(request.files['video'], "video")
+            if url: coach.video_url = url
+            
+        db.session.commit()
+        return redirect('/superadmin/dashboard')
+
+    return f"""
+    <h2>Edit {coach.name}</h2>
+    <form method='POST' enctype='multipart/form-data'>
+        Name: <input name='name' value='{coach.name}'><br>
+        Gym: <input name='gym_name' value='{coach.gym_name}'><br>
+        Title: <input name='title' value='{coach.title}'><br>
+        Phone: <input name='phone' value='{coach.phone}'><br>
+        Current Logo: <img src='{coach.logo_url}' width='50'><br>
+        New Logo: <input type='file' name='logo'><br>
+        Current Video: <a href='{coach.video_url}' target='_blank'>Watch</a><br>
+        New Video: <input type='file' name='video'><br>
+        Ad Text: <textarea name='ad_text'>{coach.ad_text}</textarea><br>
+        Rules: <input name='reward_rules' value='{coach.reward_rules}'><br>
+        <button type='submit'>Update Coach</button>
+    </form>
+    """
+
+# --- Coach Panel ---
+
+@app.route('/<slug>/panel', methods=['GET', 'POST'])
+def coach_panel(slug):
+    coach = Coach.query.filter_by(slug=slug).first()
+    if not coach: return "Not found", 404
+    if request.method == 'POST':
+        if request.form.get('password') == coach.password:
+            resp = make_response(redirect(f'/{slug}/stats'))
+            resp.set_cookie(f'coach_auth_{slug}', coach.password)
+            return resp
+        return "Wrong Password"
+    if request.cookies.get(f'coach_auth_{slug}') != coach.password:
+        return f"<h2>{coach.name} Panel</h2><form method='POST'><input type='password' name='password'><button>Login</button></form>"
+    return redirect(f'/{slug}/stats')
+
+@app.route('/<slug>/stats')
+def coach_stats(slug):
+    coach = Coach.query.filter_by(slug=slug).first()
+    if not coach or request.cookies.get(f'coach_auth_{slug}') != coach.password: return redirect(f'/{slug}/panel')
     
-    html += """</table></div></body></html>"""
+    total_refs = Referral.query.filter_by(coach_id=coach.id).count()
+    total_views = Visit.query.filter_by(coach_id=coach.id).count()
     
-    response = make_response(html)
-    response.set_cookie("admin_key", ADMIN_PASSWORD, max_age=60*60*24*7, httponly=True, samesite='Strict')
-    return response
+    html = f"""
+    <html><body style="font-family:sans-serif; padding:20px;">
+    <h2>{coach.name} Dashboard</h2>
+    <div style="display:flex; gap:10px; margin-bottom:20px;">
+        <div style="background:#eee; padding:15px; border-radius:8px; flex:1; text-align:center;">
+            <h3>{total_refs}</h3><small>Total Referrals</small>
+        </div>
+        <div style="background:#eee; padding:15px; border-radius:8px; flex:1; text-align:center;">
+            <h3>{total_views}</h3><small>Valid Views</small>
+        </div>
+    </div>
+    
+    <h3>Active Students Progress</h3>
+    <table border="1" style="width:100%; border-collapse:collapse; text-align:center;">
+        <tr style="background:#f2f2f2;"><th>Phone</th><th>Views</th><th>Refs</th><th>Discount</th><th>Status</th></tr>
+    """
+    
+    users = Referral.query.filter_by(coach_id=coach.id).all()
+    for u in users:
+        v_count = Visit.query.filter_by(referral_code=u.code, coach_id=coach.id).count()
+        c_count = Referral.query.filter_by(parent_code=u.code, coach_id=coach.id).count()
+        if v_count > 0 or c_count > 0:
+            disc, nxt, rem = calculate_discount(v_count, coach.reward_rules)
+            status = "🔥 Active" if v_count > 0 else "Registered"
+            html += f"<tr><td>{u.phone}</td><td>{v_count}</td><td>{c_count}</td><td>{disc}</td><td>{status}</td></tr>"
+            
+    html += "</table></body></html>"
+    return html
+
+# --- PWA ---
+
+@app.route('/manifest.json')
+def manifest():
+    return jsonify({
+        "name": "Referral Manager", "short_name": "RefManager",
+        "start_url": "/superadmin", "display": "standalone",
+        "background_color": "#ffffff", "theme_color": "#000000",
+        "icons": [{"src": "/static/logo.png", "sizes": "192x192", "type": "image/png"}]
+    })
+
+@app.route('/sw.js')
+def service_worker():
+    return "self.addEventListener('install', e => self.skipWaiting()); self.addEventListener('fetch', e => e.respondWith(fetch(e.request)));", 200, {'Content-Type': 'application/javascript'}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
