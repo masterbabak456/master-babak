@@ -41,7 +41,6 @@ class Coach(db.Model):
     title = db.Column(db.String(100))
     phone = db.Column(db.String(20))
     logo_url = db.Column(db.String(300), default='/static/logo.png')
-    # Default to a known working MP4 structure
     video_url = db.Column(db.String(300), default='/static/videomaster.mp4')
     ad_text = db.Column(db.Text)
     reward_rules = db.Column(db.Text) 
@@ -146,18 +145,13 @@ def new_unique_code():
             return code
 
 def upload_to_cloudinary(file, resource_type="auto"):
-    """
-    FIXED: Explicitly force video format to mp4 and resource_type to video
-    to ensure the URL serves a playable video file, not just audio or thumbnail.
-    """
     try:
-        # If it's a video file, force resource_type='video' and format='mp4'
         if resource_type == "video" or (hasattr(file, 'filename') and file.filename.endswith(('.mp4', '.mov', '.avi'))):
              result = cloudinary.uploader.upload(
                 file, 
                 resource_type="video", 
-                format="mp4",  # Force MP4 container
-                eager=[{"width": 720, "crop": "scale"}] # Optional: optimize size
+                format="mp4",
+                eager=[{"width": 720, "crop": "scale"}]
             )
         else:
             result = cloudinary.uploader.upload(file, resource_type="image")
@@ -177,11 +171,6 @@ def public_landing(slug):
     ref_code = request.args.get('ref')
     visitor_id = get_visitor_id()
     
-    # VIDEO FIX:
-    # 1. Added 'controls' so you can verify playback manually.
-    # 2. Added 'preload="metadata"' to load video data.
-    # 3. Removed 'muted' from HTML (JS handles it on play).
-    # 4. Ensured object-fit covers the strip.
     video_html = f"""
     <div style="width:100%; height:8vh; min-height:60px; background:#000; position:relative; margin: 10px 0; border-radius:5px; overflow:hidden;">
         <video id="main-video" 
@@ -216,7 +205,6 @@ def public_landing(slug):
             <h2>{coach.name}</h2><p>{coach.title}</p><p>📞 {coach.phone}</p>
         </div>
         
-        <!-- Video Section -->
         {video_html}
 
         <div class="card"><h3>🎁 Kampaniya</h3><p style="white-space:pre-line">{coach.ad_text}</p></div>
@@ -233,34 +221,22 @@ def public_landing(slug):
             var hasTracked = false;
 
             function playVideo() {{
-                // Hide overlay
                 overlay.style.display = 'none';
-                
-                // Ensure video is not muted for user interaction
                 vid.muted = false;
-                
-                // Add controls temporarily so user can see it's playing
                 vid.controls = true;
                 
-                // Play promise handling
                 var playPromise = vid.play();
                 if (playPromise !== undefined) {{
-                    playPromise.then(_ => {{
-                        // Playback started successfully
-                        console.log("Video playing");
-                    }})
+                    playPromise.then(_ => {{}})
                     .catch(error => {{
-                        console.log("Autoplay prevented, trying muted:", error);
                         vid.muted = true;
                         vid.play();
                     }});
                 }}
 
-                // Fullscreen logic
                 if (vid.requestFullscreen) {{ vid.requestFullscreen(); }}
                 else if (vid.webkitEnterFullscreen) {{ vid.webkitEnterFullscreen(); }}
                 
-                // Track View
                 if (!hasTracked) {{
                     fetch('/track_view', {{
                         method: 'POST',
@@ -271,11 +247,10 @@ def public_landing(slug):
                 }}
             }}
             
-            // Handle exit fullscreen
             document.addEventListener('fullscreenchange', function() {{
                 if (!document.fullscreenElement) {{
                     vid.pause();
-                    vid.controls = false; // Hide controls when back in strip
+                    vid.controls = false;
                     overlay.style.display = 'flex';
                     vid.currentTime = 0;
                 }}
@@ -417,7 +392,6 @@ def super_admin_new():
             if url: logo_url = url
             
         if 'video' in request.files and request.files['video'].filename:
-            # Explicitly pass resource_type video
             url = upload_to_cloudinary(request.files['video'], "video")
             if url: video_url = url
 
