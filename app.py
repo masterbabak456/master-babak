@@ -11,7 +11,7 @@ import cloudinary.uploader
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev_secret_key_change_in_render')
 
-# --- Database Settings ---
+# --- تنظیمات دیتابیس ---
 db_uri = os.environ.get('DATABASE_URL', 'sqlite:///referrals_multi.db')
 if db_uri and db_uri.startswith("postgres://"):
     db_uri = db_uri.replace("postgres://", "postgresql://", 1)
@@ -19,7 +19,7 @@ if db_uri and db_uri.startswith("postgres://"):
 app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# --- Cloudinary Settings ---
+# --- تنظیمات Cloudinary (برای ذخیره دائمی ویدئو/لوگو) ---
 cloudinary.config(
     cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME'),
     api_key=os.environ.get('CLOUDINARY_API_KEY'),
@@ -31,7 +31,7 @@ BASE_URL = os.environ.get('BASE_URL', 'https://master-babak.onrender.com')
 
 db = SQLAlchemy(app)
 
-# --- Models ---
+# --- مدل‌های دیتابیس ---
 
 class Coach(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -68,13 +68,14 @@ class Visit(db.Model):
         UniqueConstraint('coach_id', 'referral_code', 'visitor_id', name='uq_visit_coach_code_visitor'),
     )
 
-# --- Helpers & Migration ---
+# --- توابع کمکی و مهاجرت دیتابیس ---
 
 def ensure_schema():
     insp = inspect(db.engine)
     tables = insp.get_table_names()
     db.create_all()
     
+    # ایجاد مربی پیش‌فرض اگر وجود ندارد
     default_coach = Coach.query.filter_by(slug='babak').first()
     if not default_coach:
         default_coach = Coach(
@@ -88,6 +89,7 @@ def ensure_schema():
     
     default_coach_id = default_coach.id
 
+    # مهاجرت امن جداول قدیمی
     with db.engine.begin() as conn:
         if 'referral' in tables:
             cols = {c['name'] for c in insp.get_columns('referral')}
@@ -147,21 +149,15 @@ def new_unique_code():
 def upload_to_cloudinary(file, resource_type="auto"):
     try:
         if resource_type == "video" or (hasattr(file, 'filename') and file.filename.endswith(('.mp4', '.mov', '.avi'))):
-             result = cloudinary.uploader.upload(
-                file, 
-                resource_type="video", 
-                format="mp4",
-                eager=[{"width": 720, "crop": "scale"}]
-            )
+             result = cloudinary.uploader.upload(file, resource_type="video", format="mp4")
         else:
             result = cloudinary.uploader.upload(file, resource_type="image")
-            
         return result.get('secure_url')
     except Exception as e:
         print(f"Upload Error: {e}")
         return None
 
-# --- Routes ---
+# --- صفحه ۱: عمومی (لوگو ۳۰٪، ویدئو ۳۰٪، جایزه ۲۰٪، تلفن ۲۰٪) ---
 
 @app.route('/<slug>')
 def public_landing(slug):
@@ -171,21 +167,6 @@ def public_landing(slug):
     ref_code = request.args.get('ref')
     visitor_id = get_visitor_id()
     
-    video_html = f"""
-    <div style="width:100%; height:8vh; min-height:60px; background:#000; position:relative; margin: 10px 0; border-radius:5px; overflow:hidden;">
-        <video id="main-video" 
-               src="{coach.video_url}" 
-               style="width:100%; height:100%; object-fit:cover;" 
-               playsinline 
-               preload="metadata"
-               poster="{coach.logo_url}">
-        </video>
-        <div id="play-overlay" onclick="playVideo()" style="position:absolute; top:0; left:0; width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.4); cursor:pointer; z-index:10;">
-            <span style="color:white; font-weight:bold; font-size:16px; text-shadow:0 2px 4px rgba(0,0,0,0.5);">▶ PLAY VIDEO</span>
-        </div>
-    </div>
-    """
-
     resp_html = f"""
     <!DOCTYPE html>
     <html lang="az"><head>
@@ -193,28 +174,58 @@ def public_landing(slug):
         <title>{coach.name}</title>
         <link rel="manifest" href="/manifest.json">
         <style>
-            body {{ font-family: sans-serif; margin: 0; padding: 15px; background: #f4f4f4; text-align: center; }}
-            .card {{ background: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 15px; }}
-            input, button {{ padding: 10px; margin: 5px 0; width: 90%; border-radius: 5px; border: 1px solid #ddd; }}
-            button {{ background: #25D366; color: white; border: none; font-weight: bold; }}
-            .btn-blue {{ background: #007bff; }}
+            body {{ font-family: sans-serif; margin: 0; padding: 0; background: #f4f4f4; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }}
+            .section {{ width: 100%; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }}
+            
+            /* 30% Logo */
+            .sec-logo {{ height: 30vh; background: white; padding: 10px; }}
+            .sec-logo img {{ max-height: 80%; border-radius: 50%; object-fit: cover; }}
+            .sec-logo h2 {{ margin: 5px 0; font-size: 18px; }}
+            .sec-logo p {{ margin: 0; font-size: 12px; color: #666; }}
+            
+            /* 30% Video */
+            .sec-video {{ height: 30vh; background: #000; position: relative; }}
+            .sec-video video {{ width: 100%; height: 100%; object-fit: cover; }}
+            .play-btn {{ position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(255,255,255,0.8); padding: 15px 30px; border-radius: 30px; font-weight: bold; cursor: pointer; z-index: 10; }}
+            
+            /* 20% Rewards */
+            .sec-rewards {{ height: 20vh; background: #fff3cd; padding: 10px; overflow-y: auto; }}
+            .sec-rewards p {{ margin: 0; font-size: 14px; white-space: pre-line; text-align: center; }}
+            
+            /* 20% Phone Input */
+            .sec-phone {{ height: 20vh; background: #007bff; padding: 10px; }}
+            .sec-phone input {{ width: 90%; padding: 15px; margin-bottom: 10px; border-radius: 8px; border: none; font-size: 16px; text-align: center; }}
+            .sec-phone button {{ width: 90%; padding: 15px; background: #28a745; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }}
         </style>
     </head><body>
-        <div class="card">
-            <img src="{coach.logo_url}" style="width:70px; border-radius:50%;">
-            <h2>{coach.name}</h2><p>{coach.title}</p><p>📞 {coach.phone}</p>
-        </div>
         
-        {video_html}
+        <!-- Section 1: Logo (30%) -->
+        <div class="section sec-logo">
+            <img src="{coach.logo_url}">
+            <h2>{coach.name}</h2>
+            <p>{coach.title}</p>
+        </div>
 
-        <div class="card"><h3>🎁 Kampaniya</h3><p style="white-space:pre-line">{coach.ad_text}</p></div>
-        <div class="card">
-            <form method="POST" action="/{slug}/register">
+        <!-- Section 2: Video (30%) -->
+        <div class="section sec-video">
+            <video id="main-video" src="{coach.video_url}" playsinline preload="metadata" poster="{coach.logo_url}"></video>
+            <div id="play-overlay" class="play-btn" onclick="playVideo()">▶ PLAY VIDEO</div>
+        </div>
+
+        <!-- Section 3: Rewards (20%) -->
+        <div class="section sec-rewards">
+            <p>{coach.ad_text}</p>
+        </div>
+
+        <!-- Section 4: Phone Input (20%) -->
+        <div class="section sec-phone">
+            <form method="POST" action="/{slug}/register" style="width:100%; display:flex; flex-direction:column; align-items:center;">
                 <input type="hidden" name="ref" value="{ref_code or ''}">
                 <input type="tel" name="phone" required placeholder="Nömrəniz (050...)">
-                <button type="submit" class="btn-blue">Şəxsi Linkimi Al</button>
+                <button type="submit">Şəxsi Linkimi Al</button>
             </form>
         </div>
+
         <script>
             var vid = document.getElementById("main-video");
             var overlay = document.getElementById("play-overlay");
@@ -222,20 +233,16 @@ def public_landing(slug):
 
             function playVideo() {{
                 overlay.style.display = 'none';
-                vid.muted = false;
                 vid.controls = true;
+                vid.muted = false;
                 
                 var playPromise = vid.play();
                 if (playPromise !== undefined) {{
-                    playPromise.then(_ => {{}})
-                    .catch(error => {{
-                        vid.muted = true;
-                        vid.play();
-                    }});
+                    playPromise.catch(error => {{ vid.muted = true; vid.play(); }});
                 }}
 
-                if (vid.requestFullscreen) {{ vid.requestFullscreen(); }}
-                else if (vid.webkitEnterFullscreen) {{ vid.webkitEnterFullscreen(); }}
+                if (vid.requestFullscreen) vid.requestFullscreen();
+                else if (vid.webkitEnterFullscreen) vid.webkitEnterFullscreen();
                 
                 if (!hasTracked) {{
                     fetch('/track_view', {{
@@ -251,7 +258,7 @@ def public_landing(slug):
                 if (!document.fullscreenElement) {{
                     vid.pause();
                     vid.controls = false;
-                    overlay.style.display = 'flex';
+                    overlay.style.display = 'block';
                     vid.currentTime = 0;
                 }}
             }});
@@ -294,6 +301,8 @@ def register_user(slug):
     resp.set_cookie('tkd_user_code', user.code, max_age=60*60*24*30)
     return resp
 
+# --- صفحه ۲: پنل شخصی شاگرد ---
+
 @app.route('/<slug>/user/<code>')
 def user_page(slug, code):
     coach = Coach.query.filter_by(slug=slug).first()
@@ -309,21 +318,36 @@ def user_page(slug, code):
     share_msg = f"🥋 {coach.name}\\n{share_link}"
     
     return f"""
-    <html><head><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="manifest" href="/manifest.json"></head>
-    <body style="font-family:sans-serif; text-align:center; padding:20px; background:#f4f4f4;">
-        <div style="background:white; padding:15px; border-radius:10px; margin-bottom:15px;">
-            <img src="{coach.logo_url}" style="width:50px; border-radius:50%;">
-            <h3>{coach.name}</h3>
+    <html><head><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="manifest" href="/manifest.json">
+    <style>
+        body {{ font-family: sans-serif; text-align: center; padding: 20px; background: #f4f4f4; }}
+        .card {{ background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }}
+        .btn {{ display: block; width: 100%; padding: 15px; margin: 10px 0; border-radius: 10px; text-decoration: none; color: white; font-weight: bold; font-size: 18px; box-sizing: border-box; }}
+        .wa {{ background: #25D366; }}
+        .copy {{ background: #007bff; border: none; cursor: pointer; }}
+        .stat {{ font-size: 24px; font-weight: bold; color: #333; }}
+    </style></head>
+    <body>
+        <div class="card">
+            <img src="{coach.logo_url}" style="width:60px; border-radius:50%;">
+            <h2>{coach.name}</h2>
         </div>
-        <div style="background:white; padding:15px; border-radius:10px;">
-            <h2>Linkiniz Hazırdır!</h2>
-            <div style="background:#eee; padding:10px; word-break:break-all; font-size:12px;">{share_link}</div>
-            <button onclick="navigator.clipboard.writeText('{share_link}')" style="width:100%; padding:10px; margin:10px 0; background:#007bff; color:white; border:none; border-radius:5px;">📋 Copy</button>
-            <a href="https://wa.me/?text={share_msg}" style="display:block; padding:10px; background:#25D366; color:white; text-decoration:none; border-radius:5px;">📲 WhatsApp</a>
-            <hr>
-            <p>Baxış: <b>{views_count}</b> | Dəvət: <b>{children_count}</b></p>
-            <p>Endirim: <b>{discount}</b> ({remaining} qalıb)</p>
-            <div style="background:#ddd; height:10px; border-radius:5px;"><div style="background:green; height:100%; width:{progress}%"></div></div>
+
+        <div class="card">
+            <h3>Sizin Linkiniz</h3>
+            <div style="background:#eee; padding:10px; word-break:break-all; border-radius:5px; font-size:12px; margin-bottom:10px;">{share_link}</div>
+            <button class="btn copy" onclick="navigator.clipboard.writeText('{share_link}'); this.innerText='Kopyalandı!';">📋 Copy Link</button>
+            <a href="https://wa.me/?text={share_msg}" class="btn wa">📲 WhatsApp Paylaş</a>
+        </div>
+
+        <div class="card">
+            <p>Baxış sayı: <span class="stat">{views_count}</span></p>
+            <p>Dəvət sayı: <span class="stat">{children_count}</span></p>
+            <p>Cari Endirim: <span class="stat" style="color:green;">{discount}</span></p>
+            <div style="background:#ddd; height:15px; border-radius:10px; margin-top:10px;">
+                <div style="background:#28a745; height:100%; width:{progress}%; border-radius:10px;"></div>
+            </div>
+            <small>{remaining} nəfər qalıb</small>
         </div>
     </body></html>
     """
@@ -354,36 +378,70 @@ def track_view():
         db.session.rollback()
         return jsonify(status='duplicate')
 
-# --- Super Admin ---
+# --- صفحه ۴: پنل مدیریت کل (فقط شما) ---
 
 @app.route('/superadmin', methods=['GET', 'POST'])
 def super_admin():
+    error = ""
     if request.method == 'POST':
         if request.form.get('password') == SUPER_ADMIN_PASSWORD:
             resp = make_response(redirect('/superadmin/dashboard'))
             resp.set_cookie('admin_auth', SUPER_ADMIN_PASSWORD)
             return resp
-        return "Wrong Password"
-    if request.cookies.get('admin_auth') != SUPER_ADMIN_PASSWORD:
-        return "<form method='POST'><input type='password' name='password'><button>Login</button></form>"
-    return redirect('/superadmin/dashboard')
+        error = "Yanlış Parol!"
+        
+    if request.cookies.get('admin_auth') == SUPER_ADMIN_PASSWORD:
+        return redirect('/superadmin/dashboard')
+        
+    return f"""
+    <html><body style="font-family:sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#222; color:white;">
+        <h1>Super Admin</h1>
+        <form method="POST" style="width:80%; max-width:300px;">
+            <input type="password" name="password" placeholder="Parol" style="width:100%; padding:20px; font-size:20px; margin-bottom:10px; border-radius:10px; border:none; text-align:center;">
+            <button type="submit" style="width:100%; padding:20px; font-size:20px; background:#007bff; color:white; border:none; border-radius:10px;">Daxil Ol</button>
+        </form>
+        <p style="color:red; margin-top:10px;">{error}</p>
+    </body></html>
+    """
 
 @app.route('/superadmin/dashboard')
 def super_admin_dashboard():
     if request.cookies.get('admin_auth') != SUPER_ADMIN_PASSWORD: return redirect('/superadmin')
+    
     coaches = Coach.query.all()
-    html = "<h2>Coaches Management</h2><ul>"
+    html = """
+    <html><body style="font-family:sans-serif; padding:20px; background:#f4f4f4;">
+        <h2>Coaches Management</h2>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+    """
     for c in coaches:
-        html += f"<li><b>{c.name}</b> (<a href='/{c.slug}' target='_blank'>/{c.slug}</a>) - <a href='/superadmin/edit/{c.id}'>Edit Full Profile</a></li>"
-    html += "</ul><br><a href='/superadmin/new' style='background:green; color:white; padding:10px; text-decoration:none;'>➕ Add New Coach</a>"
+        html += f"""
+        <div style="background:white; padding:15px; border-radius:10px; box-shadow:0 2px 5px rgba(0,0,0,0.1);">
+            <strong>{c.name}</strong> (<a href='/{c.slug}' target='_blank'>/{c.slug}</a>)<br>
+            <a href='/superadmin/edit/{c.id}' style="display:inline-block; margin-top:5px; padding:8px 15px; background:#007bff; color:white; text-decoration:none; border-radius:5px;">Edit Settings</a>
+        </div>
+        """
+    html += """
+        </div>
+        <br>
+        <a href='/superadmin/new' style="display:block; text-align:center; padding:15px; background:#28a745; color:white; text-decoration:none; border-radius:10px; font-size:18px;">➕ Add New Coach</a>
+        <br><br>
+        <a href='/superadmin/logout' style="display:block; text-align:center; color:red;">Logout</a>
+    </body></html>
+    """
     return html
+
+@app.route('/superadmin/logout')
+def super_admin_logout():
+    resp = make_response(redirect('/superadmin'))
+    resp.delete_cookie('admin_auth')
+    return resp
 
 @app.route('/superadmin/new', methods=['GET', 'POST'])
 def super_admin_new():
     if request.cookies.get('admin_auth') != SUPER_ADMIN_PASSWORD: return redirect('/superadmin')
     if request.method == 'POST':
         slug = request.form.get('slug')
-        
         logo_url = '/static/logo.png'
         video_url = '/static/videomaster.mp4'
         
@@ -405,20 +463,22 @@ def super_admin_new():
         return redirect('/superadmin/dashboard')
     
     return """
-    <h2>New Coach (Permanent Storage)</h2>
-    <form method='POST' enctype='multipart/form-data'>
-        Slug: <input name='slug' required><br>
-        Name: <input name='name' required><br>
-        Gym: <input name='gym_name'><br>
-        Title: <input name='title'><br>
-        Phone: <input name='phone'><br>
-        Logo: <input type='file' name='logo'><br>
-        Video: <input type='file' name='video' accept='video/*'><br>
-        Ad Text: <textarea name='ad_text'></textarea><br>
-        Rules (10:10,20:20): <input name='reward_rules'><br>
-        Password: <input name='password'><br>
-        <button type='submit'>Create Coach</button>
-    </form>
+    <html><body style="font-family:sans-serif; padding:20px;">
+        <h2>New Coach</h2>
+        <form method='POST' enctype='multipart/form-data' style="display:flex; flex-direction:column; gap:10px;">
+            <input name='slug' placeholder='Slug (URL)' required style="padding:15px; font-size:16px;">
+            <input name='name' placeholder='Name' required style="padding:15px; font-size:16px;">
+            <input name='gym_name' placeholder='Gym Name' style="padding:15px; font-size:16px;">
+            <input name='title' placeholder='Title' style="padding:15px; font-size:16px;">
+            <input name='phone' placeholder='Phone' style="padding:15px; font-size:16px;">
+            <label>Logo:</label><input type='file' name='logo' style="padding:10px;">
+            <label>Video:</label><input type='file' name='video' style="padding:10px;">
+            <textarea name='ad_text' placeholder='Ad Text' style="padding:15px; font-size:16px; height:100px;"></textarea>
+            <input name='reward_rules' placeholder='Rules (10:10,20:20)' style="padding:15px; font-size:16px;">
+            <input name='password' placeholder='Coach Password' style="padding:15px; font-size:16px;">
+            <button type='submit' style="padding:15px; background:#28a745; color:white; border:none; font-size:18px; border-radius:10px;">Create Coach</button>
+        </form>
+    </body></html>
     """
 
 @app.route('/superadmin/edit/<int:id>', methods=['GET', 'POST'])
@@ -446,37 +506,52 @@ def super_admin_edit(id):
         return redirect('/superadmin/dashboard')
 
     return f"""
-    <h2>Edit {coach.name}</h2>
-    <form method='POST' enctype='multipart/form-data'>
-        Name: <input name='name' value='{coach.name}'><br>
-        Gym: <input name='gym_name' value='{coach.gym_name}'><br>
-        Title: <input name='title' value='{coach.title}'><br>
-        Phone: <input name='phone' value='{coach.phone}'><br>
-        Current Logo: <img src='{coach.logo_url}' width='50'><br>
-        New Logo: <input type='file' name='logo'><br>
-        Current Video: <a href='{coach.video_url}' target='_blank'>Watch</a><br>
-        New Video: <input type='file' name='video' accept='video/*'><br>
-        Ad Text: <textarea name='ad_text'>{coach.ad_text}</textarea><br>
-        Rules: <input name='reward_rules' value='{coach.reward_rules}'><br>
-        <button type='submit'>Update Coach</button>
-    </form>
+    <html><body style="font-family:sans-serif; padding:20px;">
+        <h2>Edit {coach.name}</h2>
+        <form method='POST' enctype='multipart/form-data' style="display:flex; flex-direction:column; gap:10px;">
+            <input name='name' value='{coach.name}' style="padding:15px; font-size:16px;">
+            <input name='gym_name' value='{coach.gym_name}' style="padding:15px; font-size:16px;">
+            <input name='title' value='{coach.title}' style="padding:15px; font-size:16px;">
+            <input name='phone' value='{coach.phone}' style="padding:15px; font-size:16px;">
+            <label>Current Logo:</label><img src='{coach.logo_url}' width='100'>
+            <label>New Logo:</label><input type='file' name='logo' style="padding:10px;">
+            <label>Current Video:</label><a href='{coach.video_url}' target='_blank'>Watch</a>
+            <label>New Video:</label><input type='file' name='video' style="padding:10px;">
+            <textarea name='ad_text' style="padding:15px; font-size:16px; height:100px;">{coach.ad_text}</textarea>
+            <input name='reward_rules' value='{coach.reward_rules}' style="padding:15px; font-size:16px;">
+            <button type='submit' style="padding:15px; background:#007bff; color:white; border:none; font-size:18px; border-radius:10px;">Update Coach</button>
+        </form>
+    </body></html>
     """
 
-# --- Coach Panel ---
+# --- صفحه ۳: پنل مربی (فقط آمار) ---
 
 @app.route('/<slug>/panel', methods=['GET', 'POST'])
 def coach_panel(slug):
     coach = Coach.query.filter_by(slug=slug).first()
     if not coach: return "Not found", 404
+    
+    error = ""
     if request.method == 'POST':
         if request.form.get('password') == coach.password:
             resp = make_response(redirect(f'/{slug}/stats'))
             resp.set_cookie(f'coach_auth_{slug}', coach.password)
             return resp
-        return "Wrong Password"
-    if request.cookies.get(f'coach_auth_{slug}') != coach.password:
-        return f"<h2>{coach.name} Panel</h2><form method='POST'><input type='password' name='password'><button>Login</button></form>"
-    return redirect(f'/{slug}/stats')
+        error = "Yanlış Parol!"
+        
+    if request.cookies.get(f'coach_auth_{slug}') == coach.password:
+        return redirect(f'/{slug}/stats')
+        
+    return f"""
+    <html><body style="font-family:sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#333; color:white;">
+        <h1>{coach.name} Panel</h1>
+        <form method="POST" style="width:80%; max-width:300px;">
+            <input type="password" name="password" placeholder="Parol" style="width:100%; padding:20px; font-size:20px; margin-bottom:10px; border-radius:10px; border:none; text-align:center;">
+            <button type="submit" style="width:100%; padding:20px; font-size:20px; background:#28a745; color:white; border:none; border-radius:10px;">Daxil Ol</button>
+        </form>
+        <p style="color:red; margin-top:10px;">{error}</p>
+    </body></html>
+    """
 
 @app.route('/<slug>/stats')
 def coach_stats(slug):
@@ -487,33 +562,47 @@ def coach_stats(slug):
     total_views = Visit.query.filter_by(coach_id=coach.id).count()
     
     html = f"""
-    <html><body style="font-family:sans-serif; padding:20px;">
-    <h2>{coach.name} Dashboard</h2>
-    <div style="display:flex; gap:10px; margin-bottom:20px;">
-        <div style="background:#eee; padding:15px; border-radius:8px; flex:1; text-align:center;">
-            <h3>{total_refs}</h3><small>Total Referrals</small>
+    <html><body style="font-family:sans-serif; padding:20px; background:#f4f4f4;">
+        <h2>{coach.name} Dashboard</h2>
+        <div style="display:flex; gap:10px; margin-bottom:20px;">
+            <div style="background:white; padding:15px; border-radius:10px; flex:1; text-align:center; box-shadow:0 2px 5px rgba(0,0,0,0.1);">
+                <h3>{total_refs}</h3><small>Total Referrals</small>
+            </div>
+            <div style="background:white; padding:15px; border-radius:10px; flex:1; text-align:center; box-shadow:0 2px 5px rgba(0,0,0,0.1);">
+                <h3>{total_views}</h3><small>Valid Views</small>
+            </div>
         </div>
-        <div style="background:#eee; padding:15px; border-radius:8px; flex:1; text-align:center;">
-            <h3>{total_views}</h3><small>Valid Views</small>
-        </div>
-    </div>
-    
-    <h3>Active Students Progress</h3>
-    <table border="1" style="width:100%; border-collapse:collapse; text-align:center;">
-        <tr style="background:#f2f2f2;"><th>Phone</th><th>Views</th><th>Refs</th><th>Discount</th><th>Status</th></tr>
+        
+        <h3>Active Students (Min 1 View)</h3>
+        <div style="display:flex; flex-direction:column; gap:5px;">
     """
     
     users = Referral.query.filter_by(coach_id=coach.id).all()
     for u in users:
         v_count = Visit.query.filter_by(referral_code=u.code, coach_id=coach.id).count()
         c_count = Referral.query.filter_by(parent_code=u.code, coach_id=coach.id).count()
-        if v_count > 0 or c_count > 0:
-            disc, nxt, rem = calculate_discount(v_count, coach.reward_rules)
-            status = "🔥 Active" if v_count > 0 else "Registered"
-            html += f"<tr><td>{u.phone}</td><td>{v_count}</td><td>{c_count}</td><td>{disc}</td><td>{status}</td></tr>"
+        if v_count > 0: # Only show active students
+            disc, _, _ = calculate_discount(v_count, coach.reward_rules)
+            html += f"""
+            <div style="background:white; padding:10px; border-radius:5px; display:flex; justify-content:space-between;">
+                <span>{u.phone}</span>
+                <span>👁 {v_count} | 🎁 {disc}</span>
+            </div>
+            """
             
-    html += "</table></body></html>"
+    html += """
+        </div>
+        <br>
+        <a href='/{slug}/panel/logout' style="display:block; text-align:center; color:red;">Logout</a>
+    </body></html>
+    """.replace("{slug}", slug)
     return html
+
+@app.route('/<slug>/panel/logout')
+def coach_logout(slug):
+    resp = make_response(redirect(f'/{slug}/panel'))
+    resp.delete_cookie(f'coach_auth_{slug}')
+    return resp
 
 # --- PWA ---
 
