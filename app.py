@@ -11,7 +11,7 @@ import cloudinary.uploader
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev_secret_key_change_in_render')
 
-# --- تنظیمات دیتابیس ---
+# --- Database Settings ---
 db_uri = os.environ.get('DATABASE_URL', 'sqlite:///referrals_multi.db')
 if db_uri and db_uri.startswith("postgres://"):
     db_uri = db_uri.replace("postgres://", "postgresql://", 1)
@@ -19,7 +19,7 @@ if db_uri and db_uri.startswith("postgres://"):
 app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# --- تنظیمات Cloudinary ---
+# --- Cloudinary Settings ---
 cloudinary.config(
     cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME'),
     api_key=os.environ.get('CLOUDINARY_API_KEY'),
@@ -31,7 +31,7 @@ BASE_URL = os.environ.get('BASE_URL', 'https://master-babak.onrender.com')
 
 db = SQLAlchemy(app)
 
-# --- مدل‌ها ---
+# --- Models ---
 
 class Coach(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -41,6 +41,7 @@ class Coach(db.Model):
     title = db.Column(db.String(100))
     phone = db.Column(db.String(20))
     logo_url = db.Column(db.String(300), default='/static/logo.png')
+    # Default to a known working MP4 structure
     video_url = db.Column(db.String(300), default='/static/videomaster.mp4')
     ad_text = db.Column(db.Text)
     reward_rules = db.Column(db.Text) 
@@ -68,7 +69,7 @@ class Visit(db.Model):
         UniqueConstraint('coach_id', 'referral_code', 'visitor_id', name='uq_visit_coach_code_visitor'),
     )
 
-# --- توابع کمکی ---
+# --- Helpers & Migration ---
 
 def ensure_schema():
     insp = inspect(db.engine)
@@ -144,15 +145,29 @@ def new_unique_code():
         if not Referral.query.filter_by(code=code).first():
             return code
 
-def upload_to_cloudinary(file, resource_type="image"):
+def upload_to_cloudinary(file, resource_type="auto"):
+    """
+    FIXED: Explicitly force video format to mp4 and resource_type to video
+    to ensure the URL serves a playable video file, not just audio or thumbnail.
+    """
     try:
-        result = cloudinary.uploader.upload(file, resource_type=resource_type)
-        return result['secure_url']
+        # If it's a video file, force resource_type='video' and format='mp4'
+        if resource_type == "video" or (hasattr(file, 'filename') and file.filename.endswith(('.mp4', '.mov', '.avi'))):
+             result = cloudinary.uploader.upload(
+                file, 
+                resource_type="video", 
+                format="mp4",  # Force MP4 container
+                eager=[{"width": 720, "crop": "scale"}] # Optional: optimize size
+            )
+        else:
+            result = cloudinary.uploader.upload(file, resource_type="image")
+            
+        return result.get('secure_url')
     except Exception as e:
         print(f"Upload Error: {e}")
         return None
 
-# --- مسیرهای عمومی ---
+# --- Routes ---
 
 @app.route('/<slug>')
 def public_landing(slug):
@@ -162,12 +177,22 @@ def public_landing(slug):
     ref_code = request.args.get('ref')
     visitor_id = get_visitor_id()
     
-    # توجه: در اینجا {{ و }} برای_escape کردن آکولادهای JS استفاده شده است
+    # VIDEO FIX:
+    # 1. Added 'controls' so you can verify playback manually.
+    # 2. Added 'preload="metadata"' to load video data.
+    # 3. Removed 'muted' from HTML (JS handles it on play).
+    # 4. Ensured object-fit covers the strip.
     video_html = f"""
-    <div style="width:100%; height:8vh; min-height:50px; background:#000; position:relative; margin: 10px 0; border-radius:5px; overflow:hidden;">
-        <video id="main-video" src="{coach.video_url}" style="width:100%; height:100%; object-fit:cover;" muted playsinline poster="{coach.logo_url}"></video>
-        <div id="play-overlay" onclick="playVideo()" style="position:absolute; top:0; left:0; width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.3); cursor:pointer;">
-            <span style="color:white; font-weight:bold; font-size:14px;">▶ PLAY VIDEO</span>
+    <div style="width:100%; height:8vh; min-height:60px; background:#000; position:relative; margin: 10px 0; border-radius:5px; overflow:hidden;">
+        <video id="main-video" 
+               src="{coach.video_url}" 
+               style="width:100%; height:100%; object-fit:cover;" 
+               playsinline 
+               preload="metadata"
+               poster="{coach.logo_url}">
+        </video>
+        <div id="play-overlay" onclick="playVideo()" style="position:absolute; top:0; left:0; width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.4); cursor:pointer; z-index:10;">
+            <span style="color:white; font-weight:bold; font-size:16px; text-shadow:0 2px 4px rgba(0,0,0,0.5);">▶ PLAY VIDEO</span>
         </div>
     </div>
     """
@@ -190,7 +215,10 @@ def public_landing(slug):
             <img src="{coach.logo_url}" style="width:70px; border-radius:50%;">
             <h2>{coach.name}</h2><p>{coach.title}</p><p>📞 {coach.phone}</p>
         </div>
+        
+        <!-- Video Section -->
         {video_html}
+
         <div class="card"><h3>🎁 Kampaniya</h3><p style="white-space:pre-line">{coach.ad_text}</p></div>
         <div class="card">
             <form method="POST" action="/{slug}/register">
@@ -205,13 +233,34 @@ def public_landing(slug):
             var hasTracked = false;
 
             function playVideo() {{
-                if (vid.requestFullscreen) vid.requestFullscreen();
-                else if (vid.webkitEnterFullscreen) vid.webkitEnterFullscreen();
-                
-                vid.muted = false;
-                vid.play();
+                // Hide overlay
                 overlay.style.display = 'none';
                 
+                // Ensure video is not muted for user interaction
+                vid.muted = false;
+                
+                // Add controls temporarily so user can see it's playing
+                vid.controls = true;
+                
+                // Play promise handling
+                var playPromise = vid.play();
+                if (playPromise !== undefined) {{
+                    playPromise.then(_ => {{
+                        // Playback started successfully
+                        console.log("Video playing");
+                    }})
+                    .catch(error => {{
+                        console.log("Autoplay prevented, trying muted:", error);
+                        vid.muted = true;
+                        vid.play();
+                    }});
+                }}
+
+                // Fullscreen logic
+                if (vid.requestFullscreen) {{ vid.requestFullscreen(); }}
+                else if (vid.webkitEnterFullscreen) {{ vid.webkitEnterFullscreen(); }}
+                
+                // Track View
                 if (!hasTracked) {{
                     fetch('/track_view', {{
                         method: 'POST',
@@ -222,9 +271,11 @@ def public_landing(slug):
                 }}
             }}
             
+            // Handle exit fullscreen
             document.addEventListener('fullscreenchange', function() {{
                 if (!document.fullscreenElement) {{
                     vid.pause();
+                    vid.controls = false; // Hide controls when back in strip
                     overlay.style.display = 'flex';
                     vid.currentTime = 0;
                 }}
@@ -366,6 +417,7 @@ def super_admin_new():
             if url: logo_url = url
             
         if 'video' in request.files and request.files['video'].filename:
+            # Explicitly pass resource_type video
             url = upload_to_cloudinary(request.files['video'], "video")
             if url: video_url = url
 
@@ -387,7 +439,7 @@ def super_admin_new():
         Title: <input name='title'><br>
         Phone: <input name='phone'><br>
         Logo: <input type='file' name='logo'><br>
-        Video: <input type='file' name='video'><br>
+        Video: <input type='file' name='video' accept='video/*'><br>
         Ad Text: <textarea name='ad_text'></textarea><br>
         Rules (10:10,20:20): <input name='reward_rules'><br>
         Password: <input name='password'><br>
@@ -429,7 +481,7 @@ def super_admin_edit(id):
         Current Logo: <img src='{coach.logo_url}' width='50'><br>
         New Logo: <input type='file' name='logo'><br>
         Current Video: <a href='{coach.video_url}' target='_blank'>Watch</a><br>
-        New Video: <input type='file' name='video'><br>
+        New Video: <input type='file' name='video' accept='video/*'><br>
         Ad Text: <textarea name='ad_text'>{coach.ad_text}</textarea><br>
         Rules: <input name='reward_rules' value='{coach.reward_rules}'><br>
         <button type='submit'>Update Coach</button>
