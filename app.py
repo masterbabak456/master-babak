@@ -11,7 +11,7 @@ import cloudinary.uploader
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev_secret_key_change_in_render')
 
-# --- تنظیمات دیتابیس ---
+# --- Database Settings ---
 db_uri = os.environ.get('DATABASE_URL', 'sqlite:///referrals_multi.db')
 if db_uri and db_uri.startswith("postgres://"):
     db_uri = db_uri.replace("postgres://", "postgresql://", 1)
@@ -19,7 +19,7 @@ if db_uri and db_uri.startswith("postgres://"):
 app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# --- تنظیمات Cloudinary (برای ذخیره دائمی ویدئو/لوگو) ---
+# --- Cloudinary Settings ---
 cloudinary.config(
     cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME'),
     api_key=os.environ.get('CLOUDINARY_API_KEY'),
@@ -31,7 +31,7 @@ BASE_URL = os.environ.get('BASE_URL', 'https://master-babak.onrender.com')
 
 db = SQLAlchemy(app)
 
-# --- مدل‌های دیتابیس ---
+# --- Models ---
 
 class Coach(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -68,14 +68,13 @@ class Visit(db.Model):
         UniqueConstraint('coach_id', 'referral_code', 'visitor_id', name='uq_visit_coach_code_visitor'),
     )
 
-# --- توابع کمکی و مهاجرت دیتابیس ---
+# --- Helpers & Migration ---
 
 def ensure_schema():
     insp = inspect(db.engine)
     tables = insp.get_table_names()
     db.create_all()
     
-    # ایجاد مربی پیش‌فرض اگر وجود ندارد
     default_coach = Coach.query.filter_by(slug='babak').first()
     if not default_coach:
         default_coach = Coach(
@@ -89,7 +88,6 @@ def ensure_schema():
     
     default_coach_id = default_coach.id
 
-    # مهاجرت امن جداول قدیمی
     with db.engine.begin() as conn:
         if 'referral' in tables:
             cols = {c['name'] for c in insp.get_columns('referral')}
@@ -157,7 +155,7 @@ def upload_to_cloudinary(file, resource_type="auto"):
         print(f"Upload Error: {e}")
         return None
 
-# --- صفحه ۱: عمومی (لوگو ۳۰٪، ویدئو ۳۰٪، جایزه ۲۰٪، تلفن ۲۰٪) ---
+# --- PAGE 1: Public Landing (Logo 30%, Video 30%, Rewards 20%, Phone 20%) ---
 
 @app.route('/<slug>')
 def public_landing(slug):
@@ -301,7 +299,7 @@ def register_user(slug):
     resp.set_cookie('tkd_user_code', user.code, max_age=60*60*24*30)
     return resp
 
-# --- صفحه ۲: پنل شخصی شاگرد ---
+# --- PAGE 2: Student Personal Page ---
 
 @app.route('/<slug>/user/<code>')
 def user_page(slug, code):
@@ -378,7 +376,7 @@ def track_view():
         db.session.rollback()
         return jsonify(status='duplicate')
 
-# --- صفحه ۴: پنل مدیریت کل (فقط شما) ---
+# --- PAGE 4: Super Admin (Only You) ---
 
 @app.route('/superadmin', methods=['GET', 'POST'])
 def super_admin():
@@ -524,7 +522,7 @@ def super_admin_edit(id):
     </body></html>
     """
 
-# --- صفحه ۳: پنل مربی (فقط آمار) ---
+# --- PAGE 3: Coach Panel (Stats Only) ---
 
 @app.route('/<slug>/panel', methods=['GET', 'POST'])
 def coach_panel(slug):
