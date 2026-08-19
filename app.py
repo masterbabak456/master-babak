@@ -163,11 +163,8 @@ def public_landing(slug):
     ref_code = request.args.get('ref')
     visitor_id = get_visitor_id()
     
-    # Anti-cache logic for logo
-    logo_src = coach.logo_url
-    if '?' not in logo_src:
-        logo_src += f"?t={int(time.time())}"
-    
+    # Always use the local logo.png from static
+    logo_src = f"/static/logo.png?t={int(time.time())}"
     resp_html = f"""
     <!DOCTYPE html>
     <html lang="az"><head>
