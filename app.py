@@ -1,7 +1,7 @@
 from flask import Flask, request, redirect, make_response, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import Text, UniqueConstraint, inspect # FIX: Added Text import explicitly
 from markupsafe import escape
-from sqlalchemy import UniqueConstraint, inspect, text
 from sqlalchemy.exc import IntegrityError
 from werkzeug.utils import secure_filename
 import os, re, uuid, json
@@ -42,7 +42,7 @@ class Coach(db.Model):
     phone = db.Column(db.String(20))
     logo_url = db.Column(db.String(300), default='/static/logo.png')
     video_url = db.Column(db.String(300), default='/static/videomaster.mp4')
-    ad_text = db.Column(Text)
+    ad_text = db.Column(Text) # FIX: Using imported Text directly
     reward_rules = db.Column(db.Text) 
     password = db.Column(db.String(100))
     created_at = db.Column(db.DateTime, server_default=db.func.now())
@@ -311,7 +311,7 @@ def public_landing(slug):
 
         <!-- Section 3: Rewards (30%) -->
         <div class="sec-rewards">
-            <h3>🎁 Endirimlər</h3>
+            <h3> Endirimlər</h3>
             <p>{coach.ad_text}</p>
         </div>
 
@@ -579,10 +579,10 @@ def user_page(slug, code):
             </div>
 
             <div class="card">
-                <h3 style="margin-bottom: 15px; text-align: center;">📤 Linkinizi Paylaşın</h3>
+                <h3 style="margin-bottom: 15px; text-align: center;"> Linkinizi Paylaşın</h3>
                 <div class="link-box">{share_link}</div>
                 <button class="btn copy" onclick="navigator.clipboard.writeText('{share_link}'); this.innerText='✅ Kopyalandı!'; setTimeout(() => this.innerText='📋 Copy Link', 2000);">📋 Copy Link</button>
-                <a href="https://wa.me/?text={share_msg}" class="btn wa">📲 WhatsApp ilə Paylaş</a>
+                <a href="https://wa.me/?text={share_msg}" class="btn wa"> WhatsApp ilə Paylaş</a>
             </div>
 
             <div class="coach-info">
@@ -834,7 +834,7 @@ def coach_stats(slug):
             html += f"""
             <div style="background:white; padding:10px; border-radius:5px; display:flex; justify-content:space-between;">
                 <span>{u.phone}</span>
-                <span>👁 {v_count} | 🎁 {disc}</span>
+                <span> {v_count} | 🎁 {disc}</span>
             </div>
             """
             
