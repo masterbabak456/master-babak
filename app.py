@@ -78,7 +78,7 @@ def ensure_schema():
         default_coach = Coach(
             slug='babak', name='Master Babak Vosoghi', gym_name='Cənub Azərbaycan',
             title='8th Dan - TKD / Kickboxing / MMA', phone='0513909912',
-            ad_text=' Dostlarını dəvət et və mükafat qazan!\n10 nəfər → 10%\n20 nəfər → 20%',
+            ad_text='Dostlarını dəvət et və hədiyyə qazan!\n10 nəfər → 10%\n20 nəfər → 20%',
             reward_rules='10:10,20:20,30:30,40:40,50:50', password='coach123'
         )
         db.session.add(default_coach)
@@ -153,7 +153,7 @@ def upload_to_cloudinary(file, resource_type="auto"):
         print(f"Upload Error: {e}")
         return None
 
-# --- PAGE 1: Public Landing (Bright, Optimized Layout) ---
+# --- PAGE 1: Public Landing (Dark Theme, Fixed Button) ---
 
 @app.route('/<slug>')
 def public_landing(slug):
@@ -163,7 +163,7 @@ def public_landing(slug):
     ref_code = request.args.get('ref')
     visitor_id = get_visitor_id()
     
-    # Anti-cache logic for logo to ensure new uploads show immediately
+    # Anti-cache logic for logo
     logo_src = coach.logo_url
     if '?' not in logo_src:
         logo_src += f"?t={int(time.time())}"
@@ -176,12 +176,20 @@ def public_landing(slug):
         <link rel="manifest" href="/manifest.json">
         <style>
             * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-            body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; height: 100vh; overflow: hidden; display: flex; flex-direction: column; background: #ffffff; }}
+            body {{ 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                height: 100vh; 
+                overflow: hidden; 
+                display: flex; 
+                flex-direction: column; 
+                background: #0f172a; /* Dark Blue/Black Background */
+                color: white;
+            }}
             
             /* Section 1: Logo (30%) */
             .sec-logo {{ 
                 height: 30vh; 
-                background: #ffffff; 
+                background: transparent; 
                 display: flex; 
                 flex-direction: column; 
                 align-items: center; 
@@ -189,25 +197,26 @@ def public_landing(slug):
                 padding: 10px;
             }}
             .sec-logo img {{ 
-                height: 60%; 
+                height: 65%; 
                 width: auto;
-                max-width: 85%;
+                max-width: 80%;
                 object-fit: contain; 
-                filter: drop-shadow(0 4px 8px rgba(0,0,0,0.1));
+                filter: drop-shadow(0 0 15px rgba(255,255,255,0.2));
             }}
             .sec-logo h2 {{ 
-                margin: 8px 0 4px 0; 
-                font-size: 20px; 
+                margin: 10px 0 5px 0; 
+                font-size: 22px; 
                 text-align: center;
-                color: #1a1a1a;
+                color: #ffffff;
                 font-weight: 800;
+                text-shadow: 0 2px 4px rgba(0,0,0,0.5);
             }}
             .sec-logo p {{ 
                 margin: 0; 
-                font-size: 13px; 
-                color: #555; 
+                font-size: 14px; 
+                color: #cbd5e1; 
                 text-align: center;
-                font-weight: 600;
+                font-weight: 500;
             }}
             
             /* Section 2: Video (20%) */
@@ -219,67 +228,71 @@ def public_landing(slug):
                 align-items: center;
                 justify-content: center;
                 overflow: hidden;
+                border-top: 1px solid #334155;
+                border-bottom: 1px solid #334155;
             }}
             .sec-video video {{ 
                 width: 100%; 
                 height: 100%; 
                 object-fit: cover; 
+                opacity: 0.8;
             }}
             .play-btn {{ 
                 position: absolute; 
                 top: 50%; 
                 left: 50%; 
                 transform: translate(-50%, -50%); 
-                background: rgba(255,255,255,0.95); 
-                padding: 10px 25px; 
-                border-radius: 25px; 
+                background: rgba(255,255,255,0.2); 
+                backdrop-filter: blur(5px);
+                padding: 12px 30px; 
+                border-radius: 30px; 
                 font-weight: bold; 
                 cursor: pointer; 
                 z-index: 10;
-                font-size: 15px;
-                color: #333;
-                box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+                font-size: 16px;
+                color: white;
+                border: 1px solid rgba(255,255,255,0.3);
             }}
             
-            /* Section 3: Rewards (20%) - Bright Yellow/Orange */
+            /* Section 3: Rewards (20%) - Dark Card Style */
             .sec-rewards {{ 
                 height: 20vh; 
-                background: linear-gradient(135deg, #fff9c4 0%, #ffeb3b 100%);
+                background: #1e293b; /* Dark Slate */
+                margin: 10px;
+                border-radius: 15px;
                 padding: 15px; 
-                overflow-y: auto;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
                 text-align: center;
-                border-top: 1px solid #fdd835;
-                border-bottom: 1px solid #fdd835;
+                border: 1px solid #334155;
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
             }}
             .sec-rewards h3 {{
-                margin: 0 0 8px 0;
+                margin: 0 0 10px 0;
                 font-size: 18px;
-                color: #333;
+                color: #fbbf24; /* Gold/Yellow */
                 font-weight: 800;
             }}
             .sec-rewards p {{ 
-                margin: 4px 0; 
-                font-size: 16px; 
+                margin: 5px 0; 
+                font-size: 15px; 
                 white-space: pre-line; 
                 line-height: 1.5;
-                color: #222;
-                font-weight: 700;
+                color: #e2e8f0;
+                font-weight: 500;
             }}
             
-            /* Section 4: Phone Input (30%) - Large & Clear */
+            /* Section 4: Phone Input (30%) - Fixed Bottom */
             .sec-phone {{ 
                 height: 30vh; 
-                background: linear-gradient(to bottom, #e3f2fd, #bbdefb); 
+                background: #0f172a; 
                 padding: 20px;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
-                box-shadow: 0 -5px 20px rgba(0,0,0,0.05);
             }}
             .sec-phone form {{
                 width: 100%;
@@ -288,32 +301,49 @@ def public_landing(slug):
                 flex-direction: column;
                 gap: 15px;
             }}
-            .sec-phone input {{ 
-                width: 100%; 
-                padding: 18px; 
-                border-radius: 15px; 
-                border: 2px solid #90caf9; 
-                font-size: 20px; 
-                text-align: center; 
-                outline: none;
-                background: white;
-                color: #333;
-                font-weight: 600;
-                transition: border-color 0.3s;
+            .input-group {{
+                position: relative;
+                width: 100%;
             }}
-            .sec-phone input:focus {{ border-color: #2196f3; }}
+            .input-group input {{ 
+                width: 100%; 
+                padding: 18px 20px 18px 50px; 
+                border-radius: 15px; 
+                border: 1px solid #334155; 
+                font-size: 18px; 
+                text-align: left; 
+                outline: none;
+                background: #1e293b;
+                color: white;
+                transition: all 0.3s;
+            }}
+            .input-group input:focus {{ 
+                border-color: #3b82f6; 
+                box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+            }}
+            .input-icon {{
+                position: absolute;
+                left: 20px;
+                top: 50%;
+                transform: translateY(-50%);
+                color: #94a3b8;
+                font-size: 20px;
+            }}
             .sec-phone button {{ 
                 width: 100%; 
                 padding: 18px; 
-                background: linear-gradient(to right, #43a047, #2e7d32); 
+                background: linear-gradient(to right, #2563eb, #1d4ed8); /* Bright Blue */
                 color: white; 
                 border: none; 
                 border-radius: 15px; 
                 font-size: 20px; 
                 font-weight: bold; 
                 cursor: pointer; 
-                box-shadow: 0 6px 15px rgba(46, 125, 50, 0.4);
-                letter-spacing: 0.5px;
+                box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 10px;
             }}
             .sec-phone button:active {{ transform: scale(0.98); }}
         </style>
@@ -334,7 +364,7 @@ def public_landing(slug):
 
         <!-- Section 3: Rewards (20%) -->
         <div class="sec-rewards">
-            <h3>🎁 Endirimlər</h3>
+            <h3>🎁 Dostlarını dəvət et və hədiyyə qazan!</h3>
             <p>{coach.ad_text}</p>
         </div>
 
@@ -342,8 +372,14 @@ def public_landing(slug):
         <div class="sec-phone">
             <form method="POST" action="/{slug}/register">
                 <input type="hidden" name="ref" value="{ref_code or ''}">
-                <input type="tel" name="phone" required placeholder="Nömrənizi yazın (050...)">
-                <button type="submit">Şəxsi Linkimi Al </button>
+                <div class="input-group">
+                    <span class="input-icon">📞</span>
+                    <input type="tel" name="phone" required placeholder="Nömrənizi daxil edin (05XXXXXXXX)">
+                </div>
+                <button type="submit">
+                    <span>Davam et</span>
+                    <span>➤</span>
+                </button>
             </form>
         </div>
 
@@ -422,7 +458,7 @@ def register_user(slug):
     resp.set_cookie('tkd_user_code', user.code, max_age=60*60*24*30)
     return resp
 
-# --- PAGE 2: Student Personal Page (Compact Stats, Master Babak Bio) ---
+# --- PAGE 2: Student Personal Page (Dark Theme, No Scroll, Compact) ---
 
 @app.route('/<slug>/user/<code>')
 def user_page(slug, code):
@@ -440,182 +476,215 @@ def user_page(slug, code):
     
     return f"""
     <html><head>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
         <link rel="manifest" href="/manifest.json">
         <style>
             * {{ margin: 0; padding: 0; box-sizing: border-box; }}
             body {{ 
                 font-family: 'Segoe UI', sans-serif; 
-                background: #f8f9fa;
+                background: #0f172a; /* Dark Background */
+                color: white;
                 height: 100vh;
                 display: flex;
                 flex-direction: column;
-                overflow: hidden;
-            }}
-            
-            /* Main Content Area (Scrollable) */
-            .main-content {{
-                flex: 1;
-                padding: 20px;
-                overflow-y: auto;
-                display: flex;
-                flex-direction: column;
-                gap: 15px;
-            }}
-            
-            .card {{ 
-                background: white; 
-                padding: 20px; 
-                border-radius: 15px; 
-                box-shadow: 0 4px 15px rgba(0,0,0,0.05); 
-            }}
-            
-            /* Compact Stats Row */
-            .stats-row {{
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                background: #f1f8ff;
+                overflow: hidden; /* NO SCROLL */
                 padding: 15px;
-                border-radius: 12px;
-                margin-bottom: 15px;
-            }}
-            .stat-item {{ text-align: center; flex: 1; }}
-            .stat-num {{
-                font-size: 28px; 
-                font-weight: 900; 
-                color: #007bff;
-                display: block;
-                line-height: 1;
-            }}
-            .stat-lbl {{ font-size: 13px; color: #666; margin-top: 5px; font-weight: 600; }}
-            
-            .discount-badge {{
-                display: inline-block;
-                background: #28a745;
-                color: white;
-                padding: 8px 20px;
-                border-radius: 20px;
-                font-size: 24px;
-                font-weight: bold;
-                margin: 10px 0;
-                box-shadow: 0 4px 10px rgba(40, 167, 69, 0.3);
+                gap: 12px;
             }}
             
-            .progress-bar {{
-                background: #e9ecef; 
-                height: 10px; 
-                border-radius: 10px; 
-                margin: 10px 0;
-                overflow: hidden;
-            }}
-            .progress-fill {{
-                background: linear-gradient(90deg, #28a745 0%, #20c997 100%); 
-                height: 100%; 
-                width: {progress}%; 
-                border-radius: 10px;
+            /* Card Styles */
+            .card {{ 
+                background: #1e293b; 
+                border: 1px solid #334155;
+                border-radius: 16px; 
+                padding: 15px; 
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3); 
             }}
             
+            /* 1. Share Link Section (Top) */
+            .share-section {{ flex: 0 0 auto; }}
+            .share-title {{ font-size: 16px; font-weight: bold; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }}
             .link-box {{
-                background: #f8f9fa;
-                padding: 12px;
+                background: #0f172a;
+                padding: 10px;
+                border-radius: 8px;
+                font-size: 12px;
+                margin-bottom: 10px;
+                color: #94a3b8;
                 word-break: break-all;
-                border-radius: 10px;
-                font-size: 13px;
-                margin: 10px 0;
-                border: 1px solid #dee2e6;
-                text-align: center;
-                color: #495057;
+                border: 1px dashed #334155;
             }}
-            
+            .btn-row {{ display: flex; gap: 10px; }}
             .btn {{ 
-                display: block; 
-                width: 100%; 
-                padding: 14px; 
-                margin: 6px 0; 
-                border-radius: 12px; 
+                flex: 1;
+                padding: 12px; 
+                border-radius: 10px; 
                 text-decoration: none; 
                 color: white; 
                 font-weight: bold; 
-                font-size: 16px; 
+                font-size: 14px; 
                 text-align: center;
                 border: none;
                 cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 5px;
             }}
-            .wa {{ background: #25D366; }}
-            .copy {{ background: #007bff; }}
+            .wa {{ background: #16a34a; }} /* Green */
+            .copy {{ background: #2563eb; }} /* Blue */
             
-            /* Bottom Section: Master Babak Bio */
-            .bottom-section {{
-                height: 29vh;
-                min-height: 200px;
-                background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            /* 2. Stats Section (Middle - Compact Row) */
+            .stats-section {{ 
+                flex: 0 0 auto; 
+                display: flex; 
+                justify-content: space-between; 
+                padding: 10px 20px;
+            }}
+            .stat-item {{ text-align: center; flex: 1; }}
+            .stat-num {{
+                font-size: 24px; 
+                font-weight: 900; 
+                display: block;
+                line-height: 1.2;
+            }}
+            .stat-lbl {{ font-size: 12px; color: #94a3b8; margin-top: 2px; }}
+            .c-blue {{ color: #60a5fa; }}
+            .c-green {{ color: #4ade80; }}
+            .c-gold {{ color: #fbbf24; }}
+            
+            /* 3. Progress Section (Middle - Visual) */
+            .progress-section {{ 
+                flex: 1; 
+                display: flex; 
+                flex-direction: column; 
+                justify-content: center;
+                background: linear-gradient(145deg, #1e293b, #172033);
+            }}
+            .prog-header {{ font-size: 14px; font-weight: bold; margin-bottom: 15px; text-align: center; color: #e2e8f0; }}
+            .timeline {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                position: relative;
+                padding: 0 10px;
+                margin-bottom: 15px;
+            }}
+            .timeline::before {{
+                content: '';
+                position: absolute;
+                top: 50%;
+                left: 10px;
+                right: 10px;
+                height: 2px;
+                background: #334155;
+                z-index: 0;
+            }}
+            .node {{
+                width: 30px;
+                height: 30px;
+                border-radius: 50%;
+                background: #0f172a;
+                border: 2px solid #334155;
+                z-index: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 10px;
+                font-weight: bold;
+                color: #64748b;
+            }}
+            .node.active {{
+                background: #1e293b;
+                border-color: #4ade80;
+                color: #4ade80;
+                box-shadow: 0 0 10px rgba(74, 222, 128, 0.3);
+            }}
+            .node.current {{
+                width: 40px;
+                height: 40px;
+                font-size: 12px;
+                border-color: #4ade80;
+                background: #1e293b;
                 color: white;
-                padding: 20px;
+                flex-direction: column;
+                line-height: 1;
+            }}
+            .node-sub {{ font-size: 8px; color: #94a3b8; margin-top: 2px; }}
+            
+            .prog-footer {{ font-size: 12px; text-align: center; color: #94a3b8; }}
+            
+            /* 4. Info Section (Bottom - 29% Height approx) */
+            .info-section {{ 
+                flex: 0 0 25%; /* Approx 25-29% */
+                background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); /* Dark Green Gradient */
+                border: 1px solid #059669;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
                 text-align: center;
-                box-shadow: 0 -5px 20px rgba(0,0,0,0.1);
+                padding: 15px;
             }}
-            .bottom-section h3 {{
-                font-size: 20px;
-                margin-bottom: 12px;
-                font-weight: 800;
-                letter-spacing: 0.5px;
-            }}
-            .bottom-section p {{
-                font-size: 15px;
-                line-height: 1.7;
-                opacity: 0.95;
-                max-width: 90%;
-            }}
+            .info-title {{ font-size: 16px; font-weight: bold; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }}
+            .info-text {{ font-size: 13px; line-height: 1.5; color: #d1fae5; }}
+            .highlight {{ color: #4ade80; font-weight: bold; }}
+            
         </style>
     </head>
     <body>
-        <div class="main-content">
-            <!-- Share Link Card -->
-            <div class="card">
-                <h3 style="text-align: center; margin-bottom: 10px; font-size: 18px;">Linkinizi Paylaşın</h3>
-                <div class="link-box">{share_link}</div>
+        <!-- 1. Share Link -->
+        <div class="card share-section">
+            <div class="share-title"> Linkinizi Paylaşın</div>
+            <div class="link-box">{share_link}</div>
+            <div class="btn-row">
                 <button class="btn copy" onclick="navigator.clipboard.writeText('{share_link}'); this.innerText='✅ Kopyalandı!'; setTimeout(() => this.innerText='📋 Copy Link', 2000);">📋 Copy Link</button>
                 <a href="https://wa.me/?text={share_msg}" class="btn wa">WhatsApp ilə Paylaş</a>
             </div>
+        </div>
 
-            <!-- Stats & Discount Card -->
-            <div class="card" style="text-align: center;">
-                <div class="stats-row">
-                    <div class="stat-item">
-                        <span class="stat-num">{views_count}</span>
-                        <div class="stat-lbl">Baxış</div>
-                    </div>
-                    <div style="width: 1px; height: 30px; background: #ddd;"></div>
-                    <div class="stat-item">
-                        <span class="stat-num">{children_count}</span>
-                        <div class="stat-lbl">Dəvət</div>
-                    </div>
-                </div>
-                
-                <div style="margin: 10px 0;">
-                    <div class="discount-badge">{discount}</div>
-                    <div style="font-size: 13px; color: #666; font-weight: 600;">Cari endiriminiz</div>
-                </div>
-                
-                <div class="progress-bar">
-                    <div class="progress-fill"></div>
-                </div>
-                <div style="font-size: 13px; color: #666; font-weight: 600;">{remaining} nəfər qalıb növbəti səviyyəyə</div>
+        <!-- 2. Stats Row -->
+        <div class="card stats-section">
+            <div class="stat-item">
+                <span class="stat-num c-blue">{views_count}</span>
+                <div class="stat-lbl">Baxış</div>
+            </div>
+            <div style="width: 1px; background: #334155; height: 30px;"></div>
+            <div class="stat-item">
+                <span class="stat-num c-green">{children_count}</span>
+                <div class="stat-lbl">Dəvət</div>
+            </div>
+            <div style="width: 1px; background: #334155; height: 30px;"></div>
+            <div class="stat-item">
+                <span class="stat-num c-gold">{discount}</span>
+                <div class="stat-lbl">Endirim</div>
             </div>
         </div>
 
-        <!-- Bottom Section (29% Height) -->
-        <div class="bottom-section">
-            <h3>🥋 Master Babak</h3>
-            <p>Rəsmi federasiya məşqçisi və beynəlxalq hakim<br>
-            Taekwondo, Kickboxing və MMA<br>
-            Qara kəmər, 8-ci Dan<br>
-            Beynəlxalq Təşkilatdan</p>
+        <!-- 3. Progress Timeline -->
+        <div class="card progress-section">
+            <div class="prog-header">🎯 {remaining} nəfər qalıb növbəti səviyyəyə</div>
+            <div class="timeline">
+                <div class="node current">
+                    <span>{views_count}</span>
+                    <span class="node-sub">nəfər</span>
+                </div>
+                <div class="node {'active' if views_count >= 10 else ''}">10<div class="node-sub">10%</div></div>
+                <div class="node {'active' if views_count >= 20 else ''}">20<div class="node-sub">20%</div></div>
+                <div class="node {'active' if views_count >= 30 else ''}">30<div class="node-sub">30%</div></div>
+                <div class="node {'active' if views_count >= 40 else ''}">40<div class="node-sub">40%</div></div>
+                <div class="node {'active' if views_count >= 50 else ''}">50<div class="node-sub">50%</div></div>
+            </div>
+            <div class="prog-footer">Hər 10 dəvət = endirim faizinin artması</div>
+        </div>
+
+        <!-- 4. Bottom Info (Master Babak) -->
+        <div class="card info-section">
+            <div class="info-title"> Dəvətiniz hər 1 ayda yenilənir</div>
+            <div class="info-text">
+                Hər 1 ay fəaliyyətiniz sıfırlanır və yenidən 0-dan başlayırsınız.<br>
+                <span class="highlight">Daha çox dəvət edin, daha çox qazanın!</span>
+            </div>
         </div>
         
         <script>
@@ -879,7 +948,7 @@ def manifest():
     return jsonify({
         "name": "Referral Manager", "short_name": "RefManager",
         "start_url": "/superadmin", "display": "standalone",
-        "background_color": "#ffffff", "theme_color": "#000000",
+        "background_color": "#0f172a", "theme_color": "#0f172a",
         "icons": [{"src": "/static/logo.png", "sizes": "192x192", "type": "image/png"}]
     })
 
