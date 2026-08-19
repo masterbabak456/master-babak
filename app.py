@@ -1,9 +1,7 @@
 from flask import Flask, request, redirect, make_response, jsonify
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import Text, UniqueConstraint, inspect # FIX: Added Text import explicitly
-from markupsafe import escape
+from sqlalchemy import Text, UniqueConstraint, inspect
 from sqlalchemy.exc import IntegrityError
-from werkzeug.utils import secure_filename
 import os, re, uuid, json
 import cloudinary
 import cloudinary.uploader
@@ -42,7 +40,7 @@ class Coach(db.Model):
     phone = db.Column(db.String(20))
     logo_url = db.Column(db.String(300), default='/static/logo.png')
     video_url = db.Column(db.String(300), default='/static/videomaster.mp4')
-    ad_text = db.Column(Text) # FIX: Using imported Text directly
+    ad_text = db.Column(Text)
     reward_rules = db.Column(db.Text) 
     password = db.Column(db.String(100))
     created_at = db.Column(db.DateTime, server_default=db.func.now())
@@ -80,7 +78,7 @@ def ensure_schema():
         default_coach = Coach(
             slug='babak', name='Master Babak Vosoghi', gym_name='Cənub Azərbaycan',
             title='8th Dan - TKD / Kickboxing / MMA', phone='0513909912',
-            ad_text='🥋 Dostlarını dəvət et!\n10 nəfər → 10%\n20 nəfər → 20%',
+            ad_text='🥋 Dostlarını dəvət et və mükafat qazan!\n10 nəfər → 10%\n20 nəfər → 20%',
             reward_rules='10:10,20:20,30:30,40:40,50:50', password='coach123'
         )
         db.session.add(default_coach)
@@ -155,7 +153,7 @@ def upload_to_cloudinary(file, resource_type="auto"):
         print(f"Upload Error: {e}")
         return None
 
-# --- PAGE 1: Public Landing (Logo 30%, Video 20%, Rewards 30%, Phone 20%) ---
+# --- PAGE 1: Public Landing (Bright, Full Screen, Fixed Bottom) ---
 
 @app.route('/<slug>')
 def public_landing(slug):
@@ -165,45 +163,54 @@ def public_landing(slug):
     ref_code = request.args.get('ref')
     visitor_id = get_visitor_id()
     
+    # Logic to ensure uploaded logo is used if available
+    logo_src = coach.logo_url if coach.logo_url and 'static/logo.png' not in coach.logo_url else '/static/logo.png'
+    
     resp_html = f"""
     <!DOCTYPE html>
     <html lang="az"><head>
-        <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
         <title>{coach.name}</title>
         <link rel="manifest" href="/manifest.json">
         <style>
             * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-            body {{ font-family: sans-serif; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }}
+            body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; height: 100vh; overflow: hidden; display: flex; flex-direction: column; background: #f0f2f5; }}
             
-            /* Section 1: Logo (30%) */
+            /* Section 1: Logo (30%) - Bright White */
             .sec-logo {{ 
                 height: 30vh; 
-                background: white; 
+                background: #ffffff; 
                 display: flex; 
                 flex-direction: column; 
                 align-items: center; 
                 justify-content: center;
-                padding: 10px;
+                padding: 15px;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+                z-index: 2;
             }}
             .sec-logo img {{ 
-                max-height: 70%; 
-                max-width: 70%;
-                border-radius: 50%; 
-                object-fit: cover; 
+                height: 65%; 
+                width: auto;
+                max-width: 90%;
+                object-fit: contain; 
+                filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));
             }}
             .sec-logo h2 {{ 
                 margin: 10px 0 5px 0; 
-                font-size: 20px; 
+                font-size: 22px; 
                 text-align: center;
+                color: #1a1a1a;
+                font-weight: 800;
             }}
             .sec-logo p {{ 
                 margin: 0; 
                 font-size: 14px; 
-                color: #666; 
+                color: #555; 
                 text-align: center;
+                font-weight: 500;
             }}
             
-            /* Section 2: Video (20%) */
+            /* Section 2: Video (20%) - Real Video Crop */
             .sec-video {{ 
                 height: 20vh; 
                 background: #000; 
@@ -211,107 +218,120 @@ def public_landing(slug):
                 display: flex;
                 align-items: center;
                 justify-content: center;
+                overflow: hidden;
             }}
             .sec-video video {{ 
                 width: 100%; 
                 height: 100%; 
-                object-fit: cover; 
+                object-fit: cover; /* This ensures it shows a slice of the video, not the poster */
             }}
             .play-btn {{ 
                 position: absolute; 
                 top: 50%; 
                 left: 50%; 
                 transform: translate(-50%, -50%); 
-                background: rgba(255,255,255,0.9); 
-                padding: 12px 25px; 
-                border-radius: 25px; 
+                background: rgba(255,255,255,0.95); 
+                padding: 12px 30px; 
+                border-radius: 30px; 
                 font-weight: bold; 
                 cursor: pointer; 
                 z-index: 10;
-                font-size: 14px;
+                font-size: 16px;
+                color: #333;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+                transition: transform 0.2s;
             }}
+            .play-btn:active {{ transform: translate(-50%, -50%) scale(0.95); }}
             
-            /* Section 3: Rewards (30%) */
+            /* Section 3: Rewards (30%) - Bright Gradient */
             .sec-rewards {{ 
                 height: 30vh; 
-                background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
-                padding: 15px; 
+                background: linear-gradient(135deg, #fff9c4 0%, #fff176 100%);
+                padding: 20px; 
                 overflow-y: auto;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
+                text-align: center;
             }}
             .sec-rewards h3 {{
-                margin: 0 0 10px 0;
-                font-size: 18px;
+                margin: 0 0 15px 0;
+                font-size: 20px;
                 color: #333;
+                font-weight: 800;
             }}
             .sec-rewards p {{ 
-                margin: 5px 0; 
-                font-size: 16px; 
+                margin: 8px 0; 
+                font-size: 18px; 
                 white-space: pre-line; 
-                text-align: center;
                 line-height: 1.6;
-                color: #333;
+                color: #222;
+                font-weight: 600;
             }}
             
-            /* Section 4: Phone Input (20%) */
+            /* Section 4: Phone Input (20%) - Fixed Bottom, Bright Blue */
             .sec-phone {{ 
                 height: 20vh; 
-                background: #007bff; 
+                background: linear-gradient(to right, #007bff, #0056b3); 
                 padding: 15px;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
+                box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
+                z-index: 5;
             }}
             .sec-phone form {{
                 width: 100%;
-                max-width: 400px;
+                max-width: 450px;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
             }}
             .sec-phone input {{ 
                 width: 100%; 
-                padding: 12px; 
-                margin-bottom: 10px; 
-                border-radius: 8px; 
+                padding: 15px; 
+                border-radius: 12px; 
                 border: none; 
-                font-size: 16px; 
+                font-size: 18px; 
                 text-align: center; 
+                outline: none;
+                box-shadow: inset 0 2px 5px rgba(0,0,0,0.1);
             }}
             .sec-phone button {{ 
                 width: 100%; 
-                padding: 12px; 
+                padding: 15px; 
                 background: #28a745; 
                 color: white; 
                 border: none; 
-                border-radius: 8px; 
-                font-size: 16px; 
+                border-radius: 12px; 
+                font-size: 18px; 
                 font-weight: bold; 
                 cursor: pointer; 
+                box-shadow: 0 4px 10px rgba(40, 167, 69, 0.4);
+                transition: background 0.3s;
             }}
-            .sec-phone button:hover {{
-                background: #218838;
-            }}
+            .sec-phone button:hover {{ background: #218838; }}
         </style>
     </head><body>
         
         <!-- Section 1: Logo (30%) -->
         <div class="sec-logo">
-            <img src="{coach.logo_url}" alt="Logo">
+            <img src="{logo_src}" alt="Logo">
             <h2>{coach.name}</h2>
             <p>{coach.title}</p>
         </div>
 
         <!-- Section 2: Video (20%) -->
         <div class="sec-video">
-            <video id="main-video" src="{coach.video_url}" playsinline preload="metadata" poster="{coach.logo_url}"></video>
-            <div id="play-overlay" class="play-btn" onclick="playVideo()">▶ PLAY</div>
+            <video id="main-video" src="{coach.video_url}" playsinline preload="metadata"></video>
+            <div id="play-overlay" class="play-btn" onclick="playVideo()">▶ PLAY VIDEO</div>
         </div>
 
         <!-- Section 3: Rewards (30%) -->
         <div class="sec-rewards">
-            <h3> Endirimlər</h3>
+            <h3>🎁 Endirimlər və Mükafatlar</h3>
             <p>{coach.ad_text}</p>
         </div>
 
@@ -319,8 +339,8 @@ def public_landing(slug):
         <div class="sec-phone">
             <form method="POST" action="/{slug}/register">
                 <input type="hidden" name="ref" value="{ref_code or ''}">
-                <input type="tel" name="phone" required placeholder="Nömrəniz (050...)">
-                <button type="submit">Şəxsi Linkimi Al</button>
+                <input type="tel" name="phone" required placeholder="Nömrənizi daxil edin (050...)">
+                <button type="submit">Şəxsi Linkimi Al 🚀</button>
             </form>
         </div>
 
@@ -399,7 +419,7 @@ def register_user(slug):
     resp.set_cookie('tkd_user_code', user.code, max_age=60*60*24*30)
     return resp
 
-# --- PAGE 2: Student Personal Page ---
+# --- PAGE 2: Student Personal Page (Minimalist, No Top Logo, Master Babak 29% Bottom) ---
 
 @app.route('/<slug>/user/<code>')
 def user_page(slug, code):
@@ -422,44 +442,88 @@ def user_page(slug, code):
         <style>
             * {{ margin: 0; padding: 0; box-sizing: border-box; }}
             body {{ 
-                font-family: sans-serif; 
-                padding: 20px; 
+                font-family: 'Segoe UI', sans-serif; 
                 background: #f4f4f4;
-                line-height: 1.6;
+                height: 100vh;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
             }}
-            .container {{
-                max-width: 600px;
-                margin: 0 auto;
+            
+            /* Main Content Area (Top ~71%) */
+            .main-content {{
+                flex: 1;
+                padding: 20px;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+                gap: 20px;
             }}
+            
             .card {{ 
                 background: white; 
                 padding: 20px; 
                 border-radius: 15px; 
-                box-shadow: 0 4px 10px rgba(0,0,0,0.1); 
-                margin-bottom: 20px; 
+                box-shadow: 0 4px 15px rgba(0,0,0,0.05); 
             }}
-            .card-header {{
+            
+            .stat-box {{
+                display: flex;
+                justify-content: space-around;
+                margin: 10px 0;
+            }}
+            .stat {{ text-align: center; flex: 1; }}
+            .stat-number {{
+                font-size: 32px; 
+                font-weight: bold; 
+                color: #007bff;
+                display: block;
+            }}
+            .stat-label {{ font-size: 14px; color: #666; margin-top: 5px; }}
+            
+            .discount-badge {{
+                display: inline-block;
+                background: #28a745;
+                color: white;
+                padding: 10px 25px;
+                border-radius: 25px;
+                font-size: 28px;
+                font-weight: bold;
+                margin: 10px 0;
+                box-shadow: 0 4px 10px rgba(40, 167, 69, 0.3);
+            }}
+            
+            .progress-bar {{
+                background: #e9ecef; 
+                height: 12px; 
+                border-radius: 10px; 
+                margin: 15px 0;
+                overflow: hidden;
+            }}
+            .progress-fill {{
+                background: linear-gradient(90deg, #28a745 0%, #20c997 100%); 
+                height: 100%; 
+                width: {progress}%; 
+                border-radius: 10px;
+            }}
+            
+            .link-box {{
+                background: #f8f9fa;
+                padding: 15px;
+                word-break: break-all;
+                border-radius: 10px;
+                font-size: 14px;
+                margin: 15px 0;
+                border: 1px solid #dee2e6;
                 text-align: center;
-                margin-bottom: 15px;
             }}
-            .card-header img {{
-                width: 80px;
-                height: 80px;
-                border-radius: 50%;
-                object-fit: cover;
-                margin-bottom: 10px;
-            }}
-            .card-header h2 {{
-                font-size: 20px;
-                color: #333;
-                margin: 5px 0;
-            }}
+            
             .btn {{ 
                 display: block; 
                 width: 100%; 
                 padding: 15px; 
-                margin: 10px 0; 
-                border-radius: 10px; 
+                margin: 8px 0; 
+                border-radius: 12px; 
                 text-decoration: none; 
                 color: white; 
                 font-weight: bold; 
@@ -470,92 +534,44 @@ def user_page(slug, code):
             }}
             .wa {{ background: #25D366; }}
             .copy {{ background: #007bff; }}
-            .stat-box {{
-                display: flex;
-                justify-content: space-around;
-                margin: 15px 0;
-            }}
-            .stat {{ 
-                text-align: center;
-                flex: 1;
-            }}
-            .stat-number {{
-                font-size: 28px; 
-                font-weight: bold; 
-                color: #007bff;
-                display: block;
-            }}
-            .stat-label {{
-                font-size: 12px;
-                color: #666;
-                margin-top: 5px;
-            }}
-            .progress-bar {{
-                background: #ddd; 
-                height: 20px; 
-                border-radius: 10px; 
-                margin: 15px 0;
-                overflow: hidden;
-            }}
-            .progress-fill {{
-                background: linear-gradient(90deg, #28a745 0%, #20c997 100%); 
-                height: 100%; 
-                width: {progress}%; 
-                border-radius: 10px;
-                transition: width 0.3s ease;
-            }}
-            .discount-badge {{
-                display: inline-block;
-                background: #28a745;
-                color: white;
-                padding: 8px 20px;
-                border-radius: 20px;
-                font-size: 24px;
-                font-weight: bold;
-                margin: 10px 0;
-            }}
-            .info-text {{
-                text-align: center;
-                color: #666;
-                font-size: 14px;
-                margin-top: 10px;
-            }}
-            .link-box {{
-                background: #f8f9fa;
-                padding: 12px;
-                word-break: break-all;
-                border-radius: 8px;
-                font-size: 13px;
-                margin: 10px 0;
-                border: 1px solid #dee2e6;
-            }}
-            .coach-info {{
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            
+            /* Bottom Section (Exactly 29% Height) */
+            .bottom-section {{
+                height: 29vh;
+                background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
                 color: white;
                 padding: 20px;
-                border-radius: 15px;
-                margin-top: 20px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
                 text-align: center;
+                box-shadow: 0 -5px 20px rgba(0,0,0,0.1);
             }}
-            .coach-info h3 {{
+            .bottom-section h3 {{
+                font-size: 20px;
                 margin-bottom: 10px;
-                font-size: 18px;
+                font-weight: 800;
             }}
-            .coach-info p {{
-                font-size: 14px;
-                line-height: 1.8;
-                opacity: 0.95;
+            .bottom-section p {{
+                font-size: 15px;
+                line-height: 1.6;
+                opacity: 0.9;
             }}
         </style>
     </head>
     <body>
-        <div class="container">
+        <div class="main-content">
+            <!-- Share Link Card -->
             <div class="card">
-                <div class="card-header">
-                    <img src="{coach.logo_url}" alt="Logo">
-                    <h2>{coach.name}</h2>
-                </div>
-                
+                <h3 style="text-align: center; margin-bottom: 10px;">Linkinizi Paylaşın</h3>
+                <div class="link-box">{share_link}</div>
+                <button class="btn copy" onclick="navigator.clipboard.writeText('{share_link}'); this.innerText='✅ Kopyalandı!'; setTimeout(() => this.innerText='📋 Copy Link', 2000);">📋 Copy Link</button>
+                <a href="https://wa.me/?text={share_msg}" class="btn wa">WhatsApp ilə Paylaş</a>
+            </div>
+
+            <!-- Stats Card -->
+            <div class="card" style="text-align: center;">
                 <div class="stat-box">
                     <div class="stat">
                         <span class="stat-number">{views_count}</span>
@@ -567,31 +583,25 @@ def user_page(slug, code):
                     </div>
                 </div>
                 
-                <div style="text-align: center;">
+                <div style="margin: 15px 0;">
                     <div class="discount-badge">{discount}</div>
-                    <div class="info-text">Cari endiriminiz</div>
+                    <div style="font-size: 14px; color: #666;">Cari endiriminiz</div>
                 </div>
                 
                 <div class="progress-bar">
                     <div class="progress-fill"></div>
                 </div>
-                <div class="info-text">{remaining} nəfər qalıb növbəti səviyyəyə</div>
+                <div style="font-size: 14px; color: #666;">{remaining} nəfər qalıb növbəti səviyyəyə</div>
             </div>
+        </div>
 
-            <div class="card">
-                <h3 style="margin-bottom: 15px; text-align: center;"> Linkinizi Paylaşın</h3>
-                <div class="link-box">{share_link}</div>
-                <button class="btn copy" onclick="navigator.clipboard.writeText('{share_link}'); this.innerText='✅ Kopyalandı!'; setTimeout(() => this.innerText='📋 Copy Link', 2000);">📋 Copy Link</button>
-                <a href="https://wa.me/?text={share_msg}" class="btn wa"> WhatsApp ilə Paylaş</a>
-            </div>
-
-            <div class="coach-info">
-                <h3>🥋 Master Babak</h3>
-                <p>Mürəbbi və beynəlxalq dərəcəli hakim<br>
-                Taekwondo, Kickboxing və MMA<br>
-                Qara kəmər, 8-ci Dan<br>
-                Beynəlxalq Təşkilatdan</p>
-            </div>
+        <!-- Bottom Section (29% Height) -->
+        <div class="bottom-section">
+            <h3>🥋 Master Babak</h3>
+            <p>Mürəbbi və beynəlxalq dərəcəli hakim<br>
+            Taekwondo, Kickboxing və MMA<br>
+            Qara kəmər, 8-ci Dan<br>
+            Beynəlxalq Təşkilatdan</p>
         </div>
         
         <script>
@@ -626,7 +636,7 @@ def track_view():
         db.session.rollback()
         return jsonify(status='duplicate')
 
-# --- PAGE 4: Super Admin (Only You) ---
+# --- Super Admin & Coach Panel Routes (Unchanged logic, just keeping them functional) ---
 
 @app.route('/superadmin', methods=['GET', 'POST'])
 def super_admin():
@@ -772,8 +782,6 @@ def super_admin_edit(id):
     </body></html>
     """
 
-# --- PAGE 3: Coach Panel (Stats Only) ---
-
 @app.route('/<slug>/panel', methods=['GET', 'POST'])
 def coach_panel(slug):
     coach = Coach.query.filter_by(slug=slug).first()
@@ -829,7 +837,7 @@ def coach_stats(slug):
     for u in users:
         v_count = Visit.query.filter_by(referral_code=u.code, coach_id=coach.id).count()
         c_count = Referral.query.filter_by(parent_code=u.code, coach_id=coach.id).count()
-        if v_count > 0: # Only show active students
+        if v_count > 0: 
             disc, _, _ = calculate_discount(v_count, coach.reward_rules)
             html += f"""
             <div style="background:white; padding:10px; border-radius:5px; display:flex; justify-content:space-between;">
@@ -851,8 +859,6 @@ def coach_logout(slug):
     resp = make_response(redirect(f'/{slug}/panel'))
     resp.delete_cookie(f'coach_auth_{slug}')
     return resp
-
-# --- PWA ---
 
 @app.route('/manifest.json')
 def manifest():
