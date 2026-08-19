@@ -102,6 +102,7 @@ def ensure_schema():
 with app.app_context():
     ensure_schema()
 
+# FIX: Discount is based on VIEWS (Play button clicks), NOT referrals
 def calculate_discount(count, rules_str):
     rules = {}
     if rules_str:
@@ -153,7 +154,7 @@ def upload_to_cloudinary(file, resource_type="auto"):
         print(f"Upload Error: {e}")
         return None
 
-# --- PAGE 1: Public Landing (Premium Dark UI) ---
+# --- PAGE 1: Public Landing (Anti-Cache + Azerbaijani Text + Button Higher) ---
 
 @app.route('/<slug>')
 def public_landing(slug):
@@ -163,12 +164,19 @@ def public_landing(slug):
     ref_code = request.args.get('ref')
     visitor_id = get_visitor_id()
     
-    # Always use the local logo.png from static
-    logo_src = f"/static/logo.png?t={int(time.time())}"
+    # Anti-cache timestamps for static assets
+    ts = int(time.time())
+    logo_src = f"/static/logo.png?v={ts}"
+    video_src = f"/static/videomaster.mp4?v={ts}"
+    
     resp_html = f"""
     <!DOCTYPE html>
     <html lang="az"><head>
-        <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+        <meta http-equiv="Pragma" content="no-cache">
+        <meta http-equiv="Expires" content="0">
         <title>{coach.name}</title>
         <link rel="manifest" href="/manifest.json">
         <style>
@@ -179,13 +187,13 @@ def public_landing(slug):
                 overflow: hidden; 
                 display: flex; 
                 flex-direction: column; 
-                background: #0b0f19; /* Deep Dark Blue/Black */
+                background: #0b0f19;
                 color: white;
             }}
             
-            /* Section 1: Logo (30%) */
+            /* Section 1: Logo (25%) */
             .sec-logo {{ 
-                height: 30vh; 
+                height: 25vh; 
                 background: transparent; 
                 display: flex; 
                 flex-direction: column; 
@@ -194,15 +202,15 @@ def public_landing(slug):
                 padding: 10px;
             }}
             .sec-logo img {{ 
-                height: 65%; 
+                height: 60%; 
                 width: auto;
-                max-width: 80%;
+                max-width: 75%;
                 object-fit: contain; 
-                filter: drop-shadow(0 0 20px rgba(255,255,255,0.15));
+                filter: drop-shadow(0 0 15px rgba(255,255,255,0.1));
             }}
             .sec-logo h2 {{ 
-                margin: 10px 0 5px 0; 
-                font-size: 24px; 
+                margin: 8px 0 4px 0; 
+                font-size: 22px; 
                 text-align: center;
                 color: #ffffff;
                 font-weight: 800;
@@ -210,15 +218,15 @@ def public_landing(slug):
             }}
             .sec-logo p {{ 
                 margin: 0; 
-                font-size: 14px; 
+                font-size: 13px; 
                 color: #94a3b8; 
                 text-align: center;
                 font-weight: 500;
             }}
             
-            /* Section 2: Video (20%) */
+            /* Section 2: Video (15%) */
             .sec-video {{ 
-                height: 20vh; 
+                height: 15vh; 
                 background: #000; 
                 position: relative;
                 display: flex;
@@ -232,7 +240,7 @@ def public_landing(slug):
                 width: 100%; 
                 height: 100%; 
                 object-fit: cover; 
-                opacity: 0.7;
+                opacity: 0.8;
             }}
             .play-btn {{ 
                 position: absolute; 
@@ -241,67 +249,89 @@ def public_landing(slug):
                 transform: translate(-50%, -50%); 
                 background: rgba(255,255,255,0.15); 
                 backdrop-filter: blur(8px);
-                padding: 12px 35px; 
+                padding: 10px 30px; 
                 border-radius: 30px; 
                 font-weight: bold; 
                 cursor: pointer; 
                 z-index: 10;
-                font-size: 16px;
+                font-size: 15px;
                 color: white;
                 border: 1px solid rgba(255,255,255,0.2);
                 box-shadow: 0 4px 15px rgba(0,0,0,0.3);
             }}
             
-            /* Section 3: Rewards (20%) - Premium Gold Card */
+            /* Section 3: Rewards (32%) - AZERBAIJANI TEXT */
             .sec-rewards {{ 
-                height: 20vh; 
-                background: linear-gradient(145deg, #1e293b, #172033);
-                margin: 10px;
-                border-radius: 20px;
-                padding: 15px; 
+                height: 32vh; 
+                margin: 6px 12px;
+                border-radius: 18px;
+                padding: 12px; 
                 display: flex;
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
                 text-align: center;
-                border: 1px solid #334155;
-                box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+                background: linear-gradient(145deg, #171d35, #10243b);
+                border: 1px solid #2563eb;
+                box-shadow: 0 8px 20px rgba(0,0,0,0.35);
             }}
             .sec-rewards h3 {{
-                margin: 0 0 10px 0;
+                margin: 0 0 8px 0;
                 font-size: 18px;
-                color: #fbbf24; /* Gold */
+                color: #fbbf24;
                 font-weight: 800;
                 display: flex;
                 align-items: center;
                 gap: 8px;
                 justify-content: center;
             }}
-            .sec-rewards p {{ 
-                margin: 4px 0; 
-                font-size: 15px; 
-                white-space: pre-line; 
-                line-height: 1.5;
+            .reward-subtitle {{
+                font-size: 13px;
                 color: #e2e8f0;
+                margin-bottom: 12px;
                 font-weight: 500;
             }}
+            .reward-row {{
+                width: 100%;
+                display: flex;
+                justify-content: space-around;
+                align-items: center;
+                gap: 4px;
+                border-top: 1px solid rgba(255,255,255,0.1);
+                padding-top: 12px;
+            }}
+            .reward-item {{
+                flex: 1;
+                text-align: center;
+                color: white;
+                font-weight: 700;
+                font-size: 13px;
+                line-height: 1.4;
+            }}
+            .reward-item strong {{
+                display: block;
+                color: #fbbf24;
+                font-size: 16px;
+                margin-bottom: 2px;
+            }}
             
-            /* Section 4: Phone Input (30%) - Fixed Bottom */
+            /* Section 4: Phone Input (28%) - BUTTON HIGHER */
             .sec-phone {{ 
-                height: 30vh; 
+                height: 28vh; 
                 background: #0b0f19; 
-                padding: 20px;
+                padding: 8px 16px;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
-                justify-content: center;
+                justify-content: flex-start; /* Changed from center to push button up */
+                padding-top: 15px;
             }}
             .sec-phone form {{
                 width: 100%;
                 max-width: 450px;
                 display: flex;
                 flex-direction: column;
-                gap: 15px;
+                gap: 8px;
             }}
             .input-group {{
                 position: relative;
@@ -324,10 +354,10 @@ def public_landing(slug):
             }}
             .input-group input {{ 
                 width: 100%; 
-                padding: 18px 20px; 
+                padding: 14px 20px; 
                 border-radius: 15px; 
                 border: none; 
-                font-size: 18px; 
+                font-size: 17px; 
                 text-align: left; 
                 outline: none;
                 background: transparent;
@@ -338,12 +368,12 @@ def public_landing(slug):
             
             .sec-phone button {{ 
                 width: 100%; 
-                padding: 18px; 
-                background: linear-gradient(to right, #2563eb, #1d4ed8); /* Bright Blue */
+                padding: 12px; 
+                background: linear-gradient(to right, #2563eb, #1d4ed8);
                 color: white; 
                 border: none; 
                 border-radius: 15px; 
-                font-size: 20px; 
+                font-size: 18px; 
                 font-weight: bold; 
                 cursor: pointer; 
                 box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
@@ -357,31 +387,45 @@ def public_landing(slug):
         </style>
     </head><body>
         
-        <!-- Section 1: Logo (30%) -->
+        <!-- Section 1: Logo -->
         <div class="sec-logo">
             <img src="{logo_src}" alt="Logo">
             <h2>{coach.name}</h2>
             <p>{coach.title}</p>
         </div>
 
-        <!-- Section 2: Video (20%) -->
+        <!-- Section 2: Video -->
         <div class="sec-video">
-            <video id="main-video" src="{coach.video_url}" playsinline preload="metadata"></video>
+            <video id="main-video" src="{video_src}" playsinline preload="metadata"></video>
             <div id="play-overlay" class="play-btn" onclick="playVideo()">▶ PLAY</div>
         </div>
 
-        <!-- Section 3: Rewards (20%) -->
+        <!-- Section 3: Rewards (AZERBAIJANI) -->
         <div class="sec-rewards">
-            <h3>🎁 Dostlarını dəvət et və hədiyyə qazan!</h3>
-            <p>{coach.ad_text}</p>
+            <h3> Dostlarınızı dəvət edin və mükafat qazanın!</h3>
+            <div class="reward-subtitle">Dostlarınızı dəvət edin, hədiyyə və endirim əldə edin!</div>
+            <div class="reward-row">
+                <div class="reward-item">
+                    <strong>10 nəfər</strong>
+                    10% endirim
+                </div>
+                <div class="reward-item">
+                    <strong>20 nəfər</strong>
+                    20% endirim
+                </div>
+                <div class="reward-item">
+                    <strong>30 nəfər</strong>
+                    30% endirim
+                </div>
+            </div>
         </div>
 
-        <!-- Section 4: Phone Input (30%) -->
+        <!-- Section 4: Phone Input (Button Higher) -->
         <div class="sec-phone">
             <form method="POST" action="/{slug}/register">
                 <input type="hidden" name="ref" value="{ref_code or ''}">
                 <div class="input-group">
-                    <span class="input-icon">📞</span>
+                    <span class="input-icon"></span>
                     <input type="tel" name="phone" required placeholder="Nömrənizi daxil edin (05XXXXXXXX)">
                 </div>
                 <button type="submit">
@@ -434,6 +478,11 @@ def public_landing(slug):
     """
     
     response = make_response(resp_html)
+    # Disable caching for the HTML page itself
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    
     if not request.cookies.get('tkd_visitor_id'):
         response.set_cookie('tkd_visitor_id', visitor_id, max_age=60*60*24*365)
     return response
@@ -466,7 +515,7 @@ def register_user(slug):
     resp.set_cookie('tkd_user_code', user.code, max_age=60*60*24*30)
     return resp
 
-# --- PAGE 2: Student Personal Page (Premium Dark UI, No Scroll) ---
+# --- PAGE 2: Student Personal Page (FIXED: Discount based on VIEWS) ---
 
 @app.route('/<slug>/user/<code>')
 def user_page(slug, code):
@@ -476,6 +525,8 @@ def user_page(slug, code):
     
     views_count = Visit.query.filter_by(referral_code=user.code, coach_id=coach.id).count()
     children_count = Referral.query.filter_by(parent_code=user.code, coach_id=coach.id).count()
+    
+    # FIX: Discount is calculated based on VIEWS (plays), as requested
     discount, next_lvl, remaining = calculate_discount(views_count, coach.reward_rules)
     progress = min(100, int((views_count / next_lvl) * 100)) if next_lvl > 0 else 100
     
@@ -485,115 +536,118 @@ def user_page(slug, code):
     return f"""
     <html><head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+        <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+        <meta http-equiv="Pragma" content="no-cache">
+        <meta http-equiv="Expires" content="0">
         <link rel="manifest" href="/manifest.json">
         <style>
             * {{ margin: 0; padding: 0; box-sizing: border-box; }}
             body {{ 
                 font-family: 'Segoe UI', sans-serif; 
-                background: #0b0f19; /* Deep Dark Background */
+                background: #0b0f19;
                 color: white;
-                height: 100vh;
+                height: 100dvh;
                 display: flex;
                 flex-direction: column;
-                overflow: hidden; /* NO SCROLL */
-                padding: 15px;
-                gap: 12px;
+                overflow: hidden;
+                padding: 8px;
+                gap: 7px;
             }}
             
             /* Card Styles */
             .card {{ 
-                background: #1e293b; 
+                background: #111827; 
                 border: 1px solid #334155;
-                border-radius: 20px; 
-                padding: 15px; 
-                box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); 
+                border-radius: 16px; 
+                padding: 10px; 
+                box-shadow: 0 6px 18px rgba(0,0,0,0.35); 
             }}
             
-            /* 1. Share Link Section (Top) */
+            /* 1. Share Link Section */
             .share-section {{ flex: 0 0 auto; }}
-            .share-title {{ font-size: 18px; font-weight: bold; margin-bottom: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; color: #f8fafc; }}
+            .share-title {{ font-size: 16px; font-weight: bold; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; gap: 8px; color: #f8fafc; }}
             .link-box {{
                 background: #0f172a;
-                padding: 12px;
-                border-radius: 12px;
-                font-size: 13px;
-                margin-bottom: 12px;
+                padding: 10px;
+                border-radius: 10px;
+                font-size: 12px;
+                margin-bottom: 10px;
                 color: #94a3b8;
                 word-break: break-all;
                 border: 1px dashed #334155;
                 text-align: center;
             }}
-            .btn-row {{ display: flex; gap: 10px; }}
+            .btn-row {{ display: flex; gap: 8px; }}
             .btn {{ 
                 flex: 1;
-                padding: 14px; 
-                border-radius: 12px; 
+                padding: 12px; 
+                border-radius: 10px; 
                 text-decoration: none; 
                 color: white; 
                 font-weight: bold; 
-                font-size: 15px; 
+                font-size: 14px; 
                 text-align: center;
                 border: none;
                 cursor: pointer;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                gap: 8px;
+                gap: 6px;
                 box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
             }}
-            .wa {{ background: #16a34a; }} /* Green */
-            .copy {{ background: #2563eb; }} /* Blue */
+            .wa {{ background: #16a34a; }}
+            .copy {{ background: #2563eb; }}
             
-            /* 2. Stats Section (Middle - Compact Row) */
+            /* 2. Stats Section */
             .stats-section {{ 
-                flex: 0 0 auto; 
+                flex: 0 0 12%; 
                 display: flex; 
                 justify-content: space-between; 
-                padding: 15px 20px;
+                padding: 8px 15px;
                 background: linear-gradient(145deg, #1e293b, #172033);
             }}
             .stat-item {{ text-align: center; flex: 1; }}
             .stat-num {{
-                font-size: 28px; 
+                font-size: 24px; 
                 font-weight: 900; 
                 display: block;
                 line-height: 1.2;
             }}
-            .stat-lbl {{ font-size: 13px; color: #94a3b8; margin-top: 4px; font-weight: 600; }}
+            .stat-lbl {{ font-size: 12px; color: #94a3b8; margin-top: 2px; font-weight: 600; }}
             .c-blue {{ color: #60a5fa; }}
             .c-green {{ color: #4ade80; }}
             .c-gold {{ color: #fbbf24; }}
             
-            /* 3. Progress Section (Middle - Visual Timeline) */
+            /* 3. Progress Section */
             .progress-section {{ 
-                flex: 1; 
+                flex: 0 0 40%; 
                 display: flex; 
                 flex-direction: column; 
                 justify-content: center;
                 background: linear-gradient(145deg, #1e293b, #172033);
             }}
-            .prog-header {{ font-size: 15px; font-weight: bold; margin-bottom: 20px; text-align: center; color: #e2e8f0; display: flex; align-items: center; justify-content: center; gap: 8px; }}
+            .prog-header {{ font-size: 14px; font-weight: bold; margin-bottom: 10px; text-align: center; color: #e2e8f0; display: flex; align-items: center; justify-content: center; gap: 6px; }}
             .timeline {{
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
                 position: relative;
-                padding: 0 5px;
-                margin-bottom: 20px;
+                padding: 0 2px;
+                margin-bottom: 10px;
             }}
             .timeline::before {{
                 content: '';
                 position: absolute;
                 top: 50%;
-                left: 20px;
-                right: 20px;
+                left: 15px;
+                right: 15px;
                 height: 2px;
                 background: #334155;
                 z-index: 0;
             }}
             .node {{
-                width: 32px;
-                height: 32px;
+                width: 30px;
+                height: 30px;
                 border-radius: 50%;
                 background: #0f172a;
                 border: 2px solid #334155;
@@ -614,9 +668,9 @@ def user_page(slug, code):
                 box-shadow: 0 0 10px rgba(74, 222, 128, 0.2);
             }}
             .node.current {{
-                width: 45px;
-                height: 45px;
-                font-size: 14px;
+                width: 40px;
+                height: 40px;
+                font-size: 13px;
                 border-color: #4ade80;
                 background: #1e293b;
                 color: white;
@@ -624,23 +678,23 @@ def user_page(slug, code):
             }}
             .node-sub {{ font-size: 8px; color: #94a3b8; margin-top: 2px; font-weight: normal; }}
             
-            .prog-footer {{ font-size: 13px; text-align: center; color: #94a3b8; font-weight: 500; }}
+            .prog-footer {{ font-size: 12px; text-align: center; color: #94a3b8; font-weight: 500; }}
             
-            /* 4. Info Section (Bottom - Fixed Height) */
+            /* 4. Info Section (Bottom) */
             .info-section {{ 
-                flex: 0 0 22%; 
-                background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); /* Dark Green Gradient */
+                flex: 0 0 20%; 
+                background: linear-gradient(135deg, #064e3b 0%, #065f46 100%);
                 border: 1px solid #059669;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
                 text-align: center;
-                padding: 15px;
-                border-radius: 20px;
+                padding: 10px;
+                border-radius: 16px;
             }}
-            .info-title {{ font-size: 16px; font-weight: bold; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; color: #ecfdf5; }}
-            .info-text {{ font-size: 13px; line-height: 1.5; color: #d1fae5; }}
+            .info-title {{ font-size: 15px; font-weight: bold; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; color: #ecfdf5; }}
+            .info-text {{ font-size: 12px; line-height: 1.4; color: #d1fae5; }}
             .highlight {{ color: #4ade80; font-weight: bold; }}
             
         </style>
@@ -648,10 +702,10 @@ def user_page(slug, code):
     <body>
         <!-- 1. Share Link -->
         <div class="card share-section">
-            <div class="share-title">🔗 Linkinizi Paylaşın</div>
+            <div class="share-title"> Linkinizi Paylaşın</div>
             <div class="link-box">{share_link}</div>
             <div class="btn-row">
-                <button class="btn copy" onclick="navigator.clipboard.writeText('{share_link}'); this.innerText='✅ Kopyalandı!'; setTimeout(() => this.innerText=' Copy Link', 2000);">📋 Copy Link</button>
+                <button class="btn copy" onclick="navigator.clipboard.writeText('{share_link}'); this.innerText='✅ Kopyalandı!'; setTimeout(() => this.innerText=' Copy Link', 2000);"> Copy Link</button>
                 <a href="https://wa.me/?text={share_msg}" class="btn wa">WhatsApp ilə Paylaş</a>
             </div>
         </div>
@@ -662,12 +716,12 @@ def user_page(slug, code):
                 <span class="stat-num c-blue">{views_count}</span>
                 <div class="stat-lbl">Baxış</div>
             </div>
-            <div style="width: 1px; background: #334155; height: 30px;"></div>
+            <div style="width: 1px; background: #334155; height: 25px;"></div>
             <div class="stat-item">
                 <span class="stat-num c-green">{children_count}</span>
                 <div class="stat-lbl">Dəvət</div>
             </div>
-            <div style="width: 1px; background: #334155; height: 30px;"></div>
+            <div style="width: 1px; background: #334155; height: 25px;"></div>
             <div class="stat-item">
                 <span class="stat-num c-gold">{discount}</span>
                 <div class="stat-lbl">Endirim</div>
@@ -676,7 +730,7 @@ def user_page(slug, code):
 
         <!-- 3. Progress Timeline -->
         <div class="card progress-section">
-            <div class="prog-header">🎯 {remaining} nəfər qalıb növbəti səviyyəyə</div>
+            <div class="prog-header"> {remaining} nəfər qalıb növbəti səviyyəyə</div>
             <div class="timeline">
                 <div class="node current">
                     <span>{views_count}</span>
@@ -688,10 +742,10 @@ def user_page(slug, code):
                 <div class="node {'active' if views_count >= 40 else ''}">40<div class="node-sub">40%</div></div>
                 <div class="node {'active' if views_count >= 50 else ''}">50<div class="node-sub">50%</div></div>
             </div>
-            <div class="prog-footer">Hər 10 dəvət = endirim faizinin artması</div>
+            <div class="prog-footer">Hər 10 nəfər = 10% endirim</div>
         </div>
 
-        <!-- 4. Bottom Info (Master Babak / Reset Info) -->
+        <!-- 4. Bottom Info -->
         <div class="card info-section">
             <div class="info-title">📅 Dəvətiniz hər 1 ayda yenilənir</div>
             <div class="info-text">
@@ -778,7 +832,7 @@ def super_admin_dashboard():
     html += """
         </div>
         <br>
-        <a href='/superadmin/new' style="display:block; text-align:center; padding:15px; background:#28a745; color:white; text-decoration:none; border-radius:10px; font-size:18px;">➕ Add New Coach</a>
+        <a href='/superadmin/new' style="display:block; text-align:center; padding:15px; background:#28a745; color:white; text-decoration:none; border-radius:10px; font-size:18px;"> Add New Coach</a>
         <br><br>
         <a href='/superadmin/logout' style="display:block; text-align:center; color:red;">Logout</a>
     </body></html>
